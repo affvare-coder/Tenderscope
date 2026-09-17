@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#083344" />
+  <meta name="description" content="TenderScope — healthcare and defence GeM tender intelligence with verified deadlines, official documents and bid analysis." />
+  <title>TenderScope — Healthcare Tender Intelligence</title>
+  <link rel="preconnect" href="https://agdmlgbfxoqhztiormij.supabase.co" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#opportunities">Skip to tenders</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="TenderScope home">
+        <span class="brand-mark" aria-hidden="true">TS</span>
+        <span><strong>TenderScope</strong><small>Healthcare Tender Intelligence</small></span>
+      </a>
+      <div class="header-status" aria-label="data status">
+        <span class="live-dot"></span>
+        <span>Live database</span>
+        <span class="status-divider">•</span>
+        <span>17 Sep included</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">GeM • Medical • Dental • Surgical • Defence • Research</p>
+        <h1 id="hero-title">Find the bid. Understand the risk. Act before the deadline.</h1>
+        <p class="hero-sub">A clean decision desk for healthcare tenders — verified closing information, official documents, procurement signals and one-click AI bid reading.</p>
+        <div class="search-shell" role="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="Search bid no., item, buyer, PVMS, keyword…" aria-label="Search tenders" />
+          <kbd>/</kbd>
+        </div>
+      </div>
+      <aside class="hero-note">
+        <span class="note-icon">✓</span>
+        <div><strong>Submission-first view</strong><p>Exact time is shown only when verified. Date-only deadlines are clearly marked “time pending”.</p></div>
+      </aside>
+    </section>
+
+    <section class="kpis" aria-label="Tender summary">
+      <article><span id="kpiLive">—</span><small>Live opportunities</small></article>
+      <article><span id="kpiUrgent">—</span><small>Closing ≤72h</small></article>
+      <article><span id="kpiDefence">—</span><small>Defence / forces</small></article>
+      <article><span id="kpiNew17">—</span><small>Published 17 Sep</small></article>
+    </section>
+
+    <section class="workspace" id="opportunities">
+      <div class="toolbar">
+        <div class="toolbar-copy">
+          <h2>Live opportunities</h2>
+          <p id="resultCount">Loading verified bids…</p>
+        </div>
+        <button id="refreshBtn" class="icon-btn" type="button" title="Refresh live database" aria-label="Refresh live database">↻</button>
+      </div>
+
+      <div class="filters" aria-label="Tender filters">
+        <select id="priorityFilter" aria-label="Priority filter">
+          <option value="">All priorities</option>
+          <option value="A1">A1 — Defence / Dental</option>
+          <option value="A2">A2 — High relevance</option>
+          <option value="B">B — Healthcare</option>
+        </select>
+        <select id="categoryFilter" aria-label="Category filter"><option value="">All categories</option></select>
+        <select id="urgencyFilter" aria-label="Urgency filter">
+          <option value="">Any closing window</option>
+          <option value="critical">Critical &lt;24h</option>
+          <option value="72">Within 72h</option>
+          <option value="7d">Within 7 days</option>
+        </select>
+        <select id="defenceFilter" aria-label="Defence filter">
+          <option value="">All buyers</option>
+          <option value="yes">Defence only</option>
+          <option value="no">Non-defence</option>
+        </select>
+        <select id="timeFilter" aria-label="Deadline verification filter">
+          <option value="">Any deadline confidence</option>
+          <option value="verified">Exact time verified</option>
+          <option value="pending">Time pending</option>
+        </select>
+        <button id="clearFilters" class="text-btn" type="button">Clear</button>
+      </div>
+
+      <div id="loadingState" class="skeleton-stack" aria-live="polite">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+      <div id="errorState" class="error-card" hidden></div>
+      <div id="tenderList" class="tender-list" aria-live="polite"></div>
+      <button id="loadMoreBtn" class="load-more" type="button" hidden>Show more opportunities</button>
+    </section>
+  </main>
+
+  <dialog id="bidDialog" class="bid-dialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <div><p class="eyebrow" id="detailBidNo"></p><h2 id="detailTitle">Bid details</h2></div>
+        <button id="closeDialog" class="close-btn" type="button" aria-label="Close details">×</button>
+      </header>
+      <div id="detailBody" class="detail-body"></div>
+    </div>
+  </dialog>
+
+  <footer>
+    <div><strong>TenderScope</strong><span>Decision intelligence for healthcare procurement.</span></div>
+    <p>Official source documents remain authoritative. Verify bid conditions before submission.</p>
+  </footer>
+</body>
+</html>
