@@ -1,0 +1,50 @@
+name: Deploy TenderScope to Netlify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tenderscope-netlify-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Get GitHub OIDC token
+        id: oidc
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const token = await core.getIDToken('tenderscope-netlify-deploy')
+            core.setSecret(token)
+            core.setOutput('token', token)
+
+      - name: Retrieve temporary Netlify deployment handoff
+        id: handoff
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON="$(curl -fsS -X POST             -H "Authorization: Bearer $OIDC_TOKEN"             -H "Content-Type: application/json"             https://agdmlgbfxoqhztiormij.supabase.co/functions/v1/tenderscope-netlify-handoff-temp)"
+          PROXY_PATH="$(printf '%s' "$JSON" | python -c 'import sys,json; print(json.load(sys.stdin)["proxyPath"])')"
+          echo "::add-mask::$PROXY_PATH"
+          echo "proxy_path=$PROXY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy existing Netlify production site
+        env:
+          PROXY_PATH: ${{ steps.handoff.outputs.proxy_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx -y @netlify/mcp@latest             --site-id ef2a51b5-ca33-4ba5-8592-8eae11d03008             --proxy-path "$PROXY_PATH"
