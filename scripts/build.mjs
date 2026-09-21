@@ -4,4 +4,5 @@ await mkdir('dist', { recursive: true });
 for (const name of ['index.html', 'app.js', 'styles.css']) {
   await copyFile(name, `dist/${name}`);
 }
-console.log('Built three public frontend files. Server rules, SQL and worker source excluded.');
+await copyFile('node_modules/@supabase/supabase-js/dist/umd/supabase.js', 'dist/supabase.js');
+console.log('Built public frontend with pinned authentication client. Server rules, SQL and worker source excluded.');

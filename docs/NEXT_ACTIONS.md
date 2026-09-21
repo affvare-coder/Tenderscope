@@ -1,12 +1,9 @@
 # Next actions
 
-1. Finish and inspect additive database foundation; apply via named Supabase migration and execute rollback acceptance tests.
-2. Finish deterministic official GeM worker and run tests against cached real records plus live public sources.
-3. Deploy authenticated Edge Function, configure vaulted cron invocation and check real run/queue results.
-4. Connect frontend lifecycle, history, document versions and health; build only public assets and deploy to existing Netlify project.
-5. Record each of the 22 acceptance gates with evidence; Phase 1 stays incomplete while a critical gate is unproven.
+1. Observe complete deep and daily discovery, drain document dependencies and resolve any terminal failures. Preserve all existing records and histories.
+2. Review scan duration and document backlog against the intended hourly/four-hour freshness targets. Scheduling is active; an enqueued run is not proof that its full workload finished on time.
+3. Verify email delivery and Google consent with a real member before a public launch campaign. Verified password login and protected download/export already passed a temporary account acceptance test.
+4. Keep free downloads until a concrete subscription offer and payment workflow are authorized. The existing server-side policy supports later monetization.
+5. Continue Phase 1 acceptance. The next major phase after acceptance is deterministic eligibility and requirements analysis.
 
-Local test command once all implementation files exist: `npm test`.
-Public frontend build: `npm run build`.
-Database target: existing project `agdmlgbfxoqhztiormij`.
-No user secrets should be pasted into chat or committed.
+Private recovery instructions, rules, migrations, tests and worker sources are in the separate backend checkpoint. Do not add them to this public repository or frontend deployment.

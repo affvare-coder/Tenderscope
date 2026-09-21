@@ -7,3 +7,10 @@ dist/
 *.log
 coverage/
 .DS_Store
+
+# Private backend: persisted in the separate recovery checkpoint.
+config/
+db/
+worker/
+supabase/
+tests/

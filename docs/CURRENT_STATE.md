@@ -1,13 +1,13 @@
-# Current state
+# Current state — 21 September 2026
 
-Audit date: 2026-09-20.
-
-- Existing repo: `affvare-coder/Tenderscope`, branch `main`.
 - Website: https://tenderscope-healthcare.netlify.app
-- Netlify project: `ef2a51b5-ca33-4ba5-8592-8eae11d03008`.
-- Supabase project: `agdmlgbfxoqhztiormij`, healthy PostgreSQL 17, Mumbai.
-- Baseline: 503 tenders, 1,158 document records, 416 premium records.
-- Baseline website reads Supabase directly, hides elapsed deadlines, lacks sync health and immutable versions.
-- Baseline has no pg_cron/pg_net scheduler. Two existing temporary Edge Functions are preserved.
-- Existing official GeM extraction scripts and cached records are being reused for protocol and regression fixtures; they are not a production source of truth.
-- Phase 1 implementation is in progress. Nothing in this file claims a completed autonomous deployment until acceptance evidence is recorded.
+- Public frontend repository: `affvare-coder/Tenderscope`, branch `main`.
+- Existing Netlify site and Supabase database remain in use.
+- Redesigned responsive healthcare workspace, search/filter/sort controls, opportunity categories, deadline watch, bid details, source documents and change timeline are deployed.
+- Email/password and Google authentication are connected. Member PDF downloads and CSV export have server-side authorization, rate limits and a configurable membership policy. Downloads are free for verified accounts today.
+- A temporary verified test account successfully signed in, downloaded a real official PDF and exported CSV. The test account was deleted and temporary QA endpoint retired.
+- Collection runs independently of ChatGPT. Hourly discovery, four-hour deep reconciliation and daily recovery are scheduled. Every run and durable retry remains recorded.
+- At 01:24 UTC on 21 September: 1,259 stored bids, 709 active records and 16 records with extensions. Counts continue changing.
+- One complete 76-lane keyword discovery job finished. Its document dependencies remain pending. Deep and daily discovery each passed 289 of 1,844 lanes with no current source errors at this checkpoint.
+- Full Phase 1 acceptance remains OPEN until complete reconciliation and document verification succeed. No zero-missed-bid guarantee is claimed.
+- Backend recovery sources and detailed operational instructions are preserved separately from this public repository.
