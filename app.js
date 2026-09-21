@@ -354,20 +354,23 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { lo
 setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 60000);
 
 // The supported Auth client owns PKCE, callback exchange and refresh-token rotation.
-const AUTH = {session:null,mode:'login',pending:null,busy:false,access:null};
+const AUTH = {session:null,mode:'login',pending:null,busy:false,access:null,otpPhone:null,otpKind:null,nextOtpAt:0};
 const authClient = window.supabase?.createClient(PROJECT_URL, KEY, {auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 let toastTimer;
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,6000);}
 function authFeedback(message,error=false){$('authFeedback').textContent=message;$('authFeedback').classList.toggle('error',error);}
 function setAuthMode(mode){
  AUTH.mode=mode;authFeedback('');
+ const phone=mode==='phone'||mode==='otp';
+ $('phoneAccessPanel').hidden=!phone;
  const account=mode==='account'&&AUTH.session;
- $('accountPanel').hidden=!account;$('authFormPanel').hidden=!!account;
- if(account){$('accountEmail').textContent=AUTH.session.user.email||'';$('accountPlan').textContent=AUTH.access?.reason==='subscription'?'Active subscriber':AUTH.access?.reason==='trial'?'Member · premium trial':'Free member';return;}
+ $('accountPanel').hidden=!account;$('authFormPanel').hidden=!!account||phone;
+ if(phone){$('phoneAccessTitle').textContent=AUTH.session?'Verify your mobile number':'Continue with mobile';$('phoneCodeLabel').hidden=mode!=='otp';$('phoneCode').required=mode==='otp';$('phoneNumber').readOnly=mode==='otp';$('phoneSubmit').textContent=mode==='otp'?'Verify code':'Send code';return;}
+ if(account){$('accountEmail').textContent=AUTH.session.user.email||AUTH.session.user.phone||'';$('accountPlan').textContent=AUTH.access?.reason==='subscription'?'Active subscriber':AUTH.access?.reason==='trial'?'Member · premium trial':'Free member';loadAlertPreferences();return;}
  const signup=mode==='signup',recover=mode==='recover',reset=mode==='reset';
  $('authTitle').textContent=signup?'Your next opportunity starts here.':recover?'Reset your password.':reset?'Choose a new password.':'Welcome back.';
  $('authDescription').textContent=signup?'Create a free account to download official bid documents and export your shortlist.':recover?'We’ll email a secure link if an account exists for this address.':reset?'Set a password with at least 8 characters.':'Log in to download bid documents and export opportunities.';
- $('authTabs').hidden=recover||reset;$('googleLogin').hidden=recover||reset;$('authDivider').hidden=recover||reset;
+ $('authTabs').hidden=recover||reset;$('googleLogin').hidden=recover||reset;$('phoneLogin').hidden=recover||reset;$('authDivider').hidden=recover||reset;
  $('authNameLabel').hidden=!signup;$('authName').required=false;
  $('authEmailLabel').hidden=reset;$('authEmail').required=!reset;
  $('authPasswordLabel').hidden=recover;$('authPassword').required=!recover;
@@ -408,7 +411,7 @@ async function requestMemberAction(action){
  AUTH.pending=action;
  let token;try{token=await sessionToken();}catch{token=null;}
  if(!token){openAuth('login');return;}
- if(!AUTH.session.user.email_confirmed_at){openAuth('account');authFeedback('Verify your email before downloading.',true);return;}
+ if(!AUTH.session.user.email_confirmed_at&&!AUTH.session.user.phone_confirmed_at){openAuth('account');authFeedback('Verify your email or mobile number before downloading.',true);return;}
  if(AUTH.busy)return;AUTH.busy=true;
  toast(action.kind==='export'?'Preparing your bid export…':'Retrieving the official document…');
  try{
@@ -480,3 +483,60 @@ if(authClient){
  })();
 }
 load();
+
+
+// Phone OTP uses the existing Auth provider. Never simulate verification locally.
+$('phoneLogin').onclick=()=>setAuthMode('phone');
+$('verifyAlertPhone').onclick=()=>{$('phoneNumber').value=AUTH.session?.user.phone?'+'+AUTH.session.user.phone.replace(/^\+/,''):'';setAuthMode('phone');};
+$('phoneBack').onclick=()=>{AUTH.otpPhone=null;$('phoneCode').value='';setAuthMode(AUTH.session?'account':'login');};
+$('phoneForm').onsubmit=async event=>{
+ event.preventDefault();if(AUTH.busy)return;AUTH.busy=true;$('phoneSubmit').disabled=true;
+ try{
+  if(AUTH.mode==='otp'){
+   const token=$('phoneCode').value.trim();if(!/^\d{6}$/.test(token)||!AUTH.otpPhone)throw new Error('Enter the six-digit code sent to your number.');
+   const {data,error}=await authClient.auth.verifyOtp({phone:AUTH.otpPhone,token,type:AUTH.otpKind});if(error)throw error;
+   AUTH.session=data.session||AUTH.session;AUTH.otpPhone=null;$('phoneCode').value='';await readAccess();setAuthMode('account');authFeedback('Mobile number verified. You can now save your alert preferences.');
+  }else{
+   let phone=$('phoneNumber').value.replace(/[\s()-]/g,'');if(/^[6-9]\d{9}$/.test(phone))phone='+91'+phone;
+   if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Enter your mobile number with country code, for example +91 followed by 10 digits.');
+   if(Date.now()<AUTH.nextOtpAt)throw new Error('Please wait a minute before requesting another code.');
+   const response=await fetch(PROJECT_URL+'/auth/v1/settings',{headers:H,signal:AbortSignal.timeout(12000)});
+   if(!response.ok)throw new Error('Phone verification is temporarily unavailable. Please use email or Google.');
+   const settings=await response.json();if(settings.external?.phone!==true)throw new Error('Phone verification is not available yet. You can still sign in with email or Google.');
+   const changing=!!AUTH.session;
+   const result=changing?await authClient.auth.updateUser({phone}):await authClient.auth.signInWithOtp({phone});
+   if(result.error)throw result.error;
+   AUTH.otpPhone=phone;AUTH.otpKind=changing?'phone_change':'sms';AUTH.nextOtpAt=Date.now()+60000;$('phoneNumber').value=phone;setAuthMode('otp');authFeedback('Enter the code sent by SMS.');$('phoneCode').focus();
+  }
+ }catch(error){authFeedback(error.message||'Phone verification could not complete.',true);}
+ finally{AUTH.busy=false;$('phoneSubmit').disabled=false;}
+};
+async function loadAlertPreferences(){
+ const user=AUTH.session?.user;if(!user)return;
+ $('alertFeedback').textContent='';$('alertConsent').checked=false;
+ $('alertPhoneStatus').textContent=user.phone_confirmed_at&&user.phone?'Verified mobile: +'+user.phone.replace(/^\+/,''):'Verify your mobile number to save WhatsApp preferences.';
+ try{
+  const {data,error}=await authClient.from('tender_alert_subscriptions').select('categories,event_types,enabled').eq('user_id',user.id).maybeSingle();if(error)throw error;
+  if(AUTH.session?.user.id!==user.id)return;
+  document.querySelectorAll('[name=alertCategory]').forEach(input=>input.checked=(data?.categories||['all']).includes(input.value));
+  document.querySelectorAll('[name=alertEvent]').forEach(input=>input.checked=(data?.event_types||['new','extended','changed','closing']).includes(input.value));
+  $('alertFeedback').textContent=data?(data.enabled?'Preferences saved. WhatsApp delivery is awaiting setup.':'Alerts are paused.'):'';
+ }catch{$('alertFeedback').textContent='Preferences could not load. Please reopen your account to retry.';}
+}
+document.querySelectorAll('[name=alertCategory]').forEach(input=>input.onchange=()=>{
+ if(input.checked)document.querySelectorAll('[name=alertCategory]').forEach(other=>{if(input.value==='all'&&other!==input||input.value!=='all'&&other.value==='all')other.checked=false;});
+});
+async function saveAlertPreferences(enabled){
+ if(AUTH.busy)return;AUTH.busy=true;$('saveAlerts').disabled=true;$('pauseAlerts').disabled=true;
+ try{
+  const categories=[...document.querySelectorAll('[name=alertCategory]:checked')].map(i=>i.value);
+  const events=[...document.querySelectorAll('[name=alertEvent]:checked')].map(i=>i.value);
+  if(enabled&&(!categories.length||!events.length))throw new Error('Choose at least one category and one alert type.');
+  if(enabled&&!$('alertConsent').checked)throw new Error('Please agree to WhatsApp alerts before saving.');
+  const {error}=await authClient.rpc('save_my_alert_preferences',{p_categories:categories,p_event_types:events,p_enabled:enabled,p_consent:$('alertConsent').checked});if(error)throw error;
+  $('alertFeedback').classList.remove('error');$('alertFeedback').textContent=enabled?'Saved. Messages will begin only after WhatsApp delivery is connected.':'Alerts paused.';
+ }catch(error){$('alertFeedback').classList.add('error');$('alertFeedback').textContent=error.message||'Preferences could not be saved.';}
+ finally{AUTH.busy=false;$('saveAlerts').disabled=false;$('pauseAlerts').disabled=false;}
+}
+$('alertPreferences').onsubmit=event=>{event.preventDefault();saveAlertPreferences(true);};
+$('pauseAlerts').onclick=()=>saveAlertPreferences(false);
