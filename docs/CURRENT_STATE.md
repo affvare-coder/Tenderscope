@@ -13,3 +13,15 @@
 - Backend recovery sources and detailed operational instructions are preserved separately from this public repository.
 
 At 08:19 UTC on 21 September: 1,342 stored bids, 693 reviewed active records and 16 extended records. Deep and daily discovery passed 442 and 432 lanes respectively, with temporary GeM server errors retained for retry. A bounded-batch worker update was deployed at 08:24 UTC to improve document throughput and retry failed sources before the full sweep ends. Full acceptance remains open.
+
+## Continuation release — 21 September 2026
+
+The source is protected by the `recovery/before-20260921-continuation` branch. This release completes the prepared mobile verification and opt-in alert interface, adds Delhi and multi-location views, and connects official BOQ product rows to cards and bid details. Existing bid identities, source links and extension histories are preserved.
+
+Products are parsed asynchronously from supported official GeM BOQ CSVs. Unreadable formats remain marked for review; bids still publish. Product names are not inferred from keywords or truncated listing titles. Source hashes gate current product rows, and previous rows are archived when a BOQ changes.
+
+Delhi-only records are omitted from default feeds. Mixed locations containing Delhi remain available in both location views without creating a second bid. Historical location labels without source proof are explicitly UNVERIFIED; UNKNOWN is retained in discovery.
+
+Phone sign-in and WhatsApp delivery require configured providers. The interface shows unavailable setup; it does not claim that messages are sending. Location and category choices, consent, and pause controls are stored per verified account. No payment or provider connection is enabled by this release.
+
+Validation: 41 deterministic backend tests, 4 frontend behavior tests and rollback-only database checks for product history, source hash freshness, location routing and queue fairness. Full reconciliation remains incomplete; at the initial live check there were over 7,000 queued documents. Premium eligibility, OEM/price enrichment, Vault/document generation and an in-app Copilot remain subsequent phases.

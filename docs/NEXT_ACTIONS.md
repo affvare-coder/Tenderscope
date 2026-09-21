@@ -7,3 +7,11 @@
 5. Continue Phase 1 acceptance. The next major phase after acceptance is deterministic eligibility and requirements analysis.
 
 Private recovery instructions, rules, migrations, tests and worker sources are in the separate backend checkpoint. Do not add them to this public repository or frontend deployment.
+
+
+### After the continuation release
+- Measure complete discovery and document freshness against the requested hourly/four-hour cadence. Do not claim full coverage until the running sweeps and retries finish.
+- Extend product extraction to PDF/XLS layouts with provenance and review fallback.
+- Verify official delivery/consignee locations for historical imported records.
+- Connect a supported SMS provider and WhatsApp Business sender/templates through the owner's authenticated setup; verify real delivery and STOP handling before activation.
+- Proceed to requirements, OEM/contact, pricing, Vault/documents and the in-app Copilot in that order.

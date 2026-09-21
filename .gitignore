@@ -14,3 +14,7 @@ db/
 worker/
 supabase/
 tests/
+
+!tests/
+tests/*
+!tests/views.test.mjs

@@ -4,13 +4,13 @@ const API_URL = PROJECT_URL + '/rest/v1';
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { all: [], filtered: [], shown: 40, docs: new Map(), view: 'active', loading: false, loaded: false, selected: null, detailRequest: 0, sort: 'deadline' };
+const S = { all: [], filtered: [], shown: 40, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, selected: null, detailRequest: 0, sort: 'deadline' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
 const esc = (v = '') => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const VIEW = {
-  active: ['All opportunities', 'Healthcare bids from official GeM sources. Choose a bid to explore its documents and recorded changes.'],
+  active: ['All opportunities', 'Healthcare bids from official GeM sources. Delhi-only bids are in Delhi healthcare. Choose a bid to explore its documents and recorded changes.'],
   new: ['Newly discovered', 'Open healthcare bids first detected by TenderScope within the last 24 hours.'],
   updated: ['Updated opportunities', 'Open bids with a recorded change after their first publication.'],
   extended: ['Extended opportunities', 'Open bids with an extension recorded by the source monitor.'],
@@ -21,6 +21,8 @@ const VIEW = {
   medical: ['Medical opportunities', 'Open medical, surgical, diagnostic and hospital opportunities.'],
   pharma: ['Pharma opportunities', 'Open medicine and pharmaceutical opportunities.'],
   research: ['Research opportunities', 'Open healthcare research, AFMRC, ANV and Anveshan opportunities.'],
+  delhi: ['Delhi healthcare', 'Delhi and multi-location bids that include Delhi. Location evidence and verification status are shown in each bid.'],
+  multi: ['Multi-location healthcare', 'One record per bid across all its recorded locations, including Delhi where applicable.'],
   watch: ['Closed · verification watch', 'The recorded deadline has passed. A source check is needed before confirming expiry or an extension. These are not shown as open opportunities.']
 };
 function date(v) {
@@ -47,7 +49,7 @@ function deadlineTime(t) {
 }
 const hrs = t => deadlineTime(t) === null ? null : (deadlineTime(t) - Date.now()) / 36e5;
 const money = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 'Not published';
-const haystack = t => [t.bid_number, t.title, t.buyer, t.location, t.category, t.subcategory, t.pvms, ...list(t.matched_keywords)].filter(Boolean).join(' ').toLowerCase();
+const haystack = t => [t.bid_number, t.title, t.buyer, t.location, t.category, t.subcategory, t.pvms, ...list(t.matched_keywords),...list(S.products.get(t.id)?.item_names)].filter(Boolean).join(' ').toLowerCase();
 const defence = t => !!t.defence || /army|navy|air force|dg armed|defence|military/i.test(`${t.buyer || ''} ${t.title || ''}`);
 const deadline = t => exactDeadline(t) ? stamp(t.deadline) : `${formatDate(t.closing_date || t.deadline)} · time pending`;
 function officialUrl(value) {
@@ -74,6 +76,9 @@ const eventCode = t => String(t.last_event_code || t.last_event_type || '').toUp
 const updated = t => !!eventCode(t) && !['NEW_BID', 'NEW', 'PUBLISHED', 'DISCOVERED', 'INITIAL_IMPORT', 'IMPORTED', 'UNCHANGED', 'CHECKED'].includes(eventCode(t));
 function matchesView(t, view) {
   if (!eligibleRecord(t)) return false;
+  if (view === 'delhi') return active(t) && (t.location_class === 'DELHI' || (t.location_class === 'MULTI_LOCATION' && t.location_includes_delhi));
+  if (view === 'multi') return active(t) && t.location_class === 'MULTI_LOCATION';
+  if (t.location_class === 'DELHI') return false;
   if (view === 'watch') return lifecycle(t) === 'CLOSED_PENDING_VERIFICATION';
   if (!active(t)) return false;
   const text = haystack(t);
@@ -133,6 +138,7 @@ async function load({ quiet = false } = {}) {
     S.docs.clear(); S.loaded = true;
     $('errorState').hidden = true;
     categories(); kpis(); filter({ preserveShown: quiet });
+    loadProductSummaries();
     $('screenRefresh').textContent = `Screen refreshed ${stamp(new Date())}. Automatic refresh every minute while this page is visible.`;
     if (!S.selected) await openFromLocation();
   } else {
@@ -173,7 +179,7 @@ function categories() {
   if (values.includes(current)) $('categoryFilter').value = current;
 }
 function kpis() {
-  const live = S.all.filter(active);
+  const live = S.all.filter(t => matchesView(t, 'active'));
   $('kpiLive').textContent = live.length.toLocaleString('en-IN');
   $('kpiUrgent').textContent = live.filter(t => matchesView(t, 'closing')).length.toLocaleString('en-IN');
   $('kpiDefence').textContent = live.filter(defence).length.toLocaleString('en-IN');
@@ -201,12 +207,34 @@ function sourceLink(url, label, className = 'btn ghost') {
   const safe = officialUrl(url);
   return safe ? `<a class="${className}" href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '<span class="unavailable-link">Official link unavailable</span>';
 }
+async function loadProductSummaries() {
+  if(S.productsLoading)return; S.productsLoading=true;
+  try { const rows=await pages('/tender_product_summary?select=*&order=tender_id.asc'); S.products=new Map(rows.map(r=>[r.tender_id,r])); filter({preserveShown:true}); }
+  catch { /* Existing bids remain usable if enrichment is unavailable. */ }
+  finally { S.productsLoading=false; }
+}
+function productPreview(t) {
+  const summary=S.products.get(t.id);
+  if(!summary?.item_names?.length)return '<div class="product-preview pending"><strong>Products required</strong><span>Products processing</span></div>';
+  const names=summary.item_names.slice(0,5),remaining=Math.max(0,Number(summary.item_count)-names.length);
+  return `<div class="product-preview"><strong>Products required</strong><ul>${names.map(name=>`<li>${esc(name)}</li>`).join('')}</ul>${remaining?`<button class="text-btn" data-action="detail" data-id="${esc(t.id)}">+${remaining} more</button>`:''}<small>Official BOQ · ${Number(summary.item_count)} item rows</small></div>`;
+}
+function locationPanel(t) {
+ const evidence=t.location_evidence||{},verified=evidence.verification==='OFFICIAL_FACT';
+ return `<section class="detail-section location-evidence"><h3>Location evidence</h3><p><strong>${esc(t.location||'Not recorded')}</strong> · ${esc((t.location_class||'UNKNOWN').replaceAll('_',' '))}</p><p class="section-note">${verified?'Official location field checked':'UNVERIFIED · Recorded location needs an official source recheck'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
+}
+function productsPanel(items,documents=[]) {
+ const current=items.filter(item=>documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
+ if(!current.length)return '<p class="section-note">Products processing. Exact quantities, packs and specifications will appear after the official BOQ is read. Open the official documents below in the meantime.</p>';
+ current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
+ return `<p class="section-note">OFFICIAL FACT · ${current.length} BOQ rows. Packs and PVMS/NIV remain unverified where the source has no dedicated field. Read the buyer specification for packaging details.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong><small>PVMS: ${esc(item.pvms||'Not specified')} · NIV: ${esc(item.niv||'Not specified')}</small></td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td>${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
+}
 function card(t) {
   const h = hrs(t), risk = list(t.risk_flags)[0], verified = exactDeadline(t), state = lifecycle(t);
   const countdown = state === 'CLOSED_PENDING_VERIFICATION' ? 'Verification pending' : !active(t) ? lifecycleLabel(t) : !verified ? 'Time pending' : h === null ? 'Date pending' : h < 1 ? 'Less than 1h left' : h < 24 ? `${Math.ceil(h)}h remaining` : `${Math.ceil(h / 24)} days remaining`;
   const urgent = active(t) && verified && h !== null && h <= 72;
   const category = t.subcategory || t.category || 'Healthcare';
-  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Newly discovered</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${t.estimated_value_inr == null ? 'not-published' : ''}">${money(t.estimated_value_inr)}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Open ChatGPT with this bid’s details">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta"><span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
+  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Newly discovered</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}${productPreview(t)}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${t.estimated_value_inr == null ? 'not-published' : ''}">${money(t.estimated_value_inr)}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Open ChatGPT with this bid’s details">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta"><span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
 }
 function render() {
   $('viewHeading').textContent = VIEW[S.view][0];
@@ -259,15 +287,17 @@ async function openBid(id, { updateLocation = true } = {}) {
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
   const isEstimate = valueLabel(t) === 'TenderScope planning estimate';
-  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section"><h3>Decision summary</h3><div class="detail-summary">${esc(t.analysis_summary || 'Analysis pending direct specification review.')}</div></section><section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><h3>Activity timeline</h3><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading recorded changes…</p></div></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel"><strong>Seller updates:</strong> Private buyer messages and seller representations are not connected. Check your GeM seller account for account-specific communications.</p><section class="ai-panel"><h3>Read this bid with ChatGPT</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button></section>`;
+  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section"><h3>Bid intelligence snapshot</h3><div class="detail-summary">${esc(t.analysis_summary || 'Analysis pending direct specification review.')}</div></section><section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Products processing…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><h3>Activity timeline</h3><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading recorded changes…</p></div></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel"><strong>Seller updates:</strong> Private buyer messages and seller representations are not connected. Check your GeM seller account for account-specific communications.</p><section class="ai-panel"><h3>Read this bid with ChatGPT</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button></section>`;
   if (!$('bidDialog').open) $('bidDialog').showModal();
   if (updateLocation) history.replaceState(null, '', `${location.pathname}${location.search}#bid=${encodeURIComponent(t.bid_number)}`);
   const responses = await Promise.allSettled([
     docs(id),
     pages(`/tender_events?select=*&tender_id=eq.${encodeURIComponent(id)}&order=detected_at.desc,id.desc`),
-    pages(`/tender_document_versions?select=*&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc`)
+    pages(`/tender_document_versions?select=*&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc`),
+    pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
+  $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
   [['detailDocuments', docPanel], ['detailTimeline', timelinePanel], ['detailVersions', versionsPanel]].forEach(([target, renderer], index) => {
     const result = responses[index];
     $(target).innerHTML = result.status === 'fulfilled' ? renderer(result.value) : `<div class="error-card">${['Document records', 'Activity timeline', 'Document version history'][index]} could not be loaded. ${esc(result.reason.message)}. Close and reopen this bid to retry.</div>`;
@@ -277,7 +307,8 @@ function askBid(id) {
   const t = byId(id); if (!t) return;
   const documents = S.docs.get(id) || [];
   const links = [...new Set([t.source_url, ...documents.map(doc => doc.official_url)].map(officialUrl).filter(Boolean))];
-  const text = `Read and analyze GeM Bid ${t.bid_number}: ${t.title}. Buyer: ${t.buyer || 'not recorded'}. Closing: ${deadline(t)}. Recorded lifecycle: ${lifecycleLabel(t)}. Last source check: ${stamp(t.last_source_checked_at)}. Read the official links and current bid conditions before answering. Do not invent missing facts. Explain eligibility, turnover/experience, MSME relaxations, EMD/ePBG, OEM authorization, Make in India, Bid-to-RA, specifications, required documents, restrictive clauses, risks, possible OEM matches and next actions. Official links:\n${links.join('\n') || 'No verified official links available; request the bid document.'}${!S.docs.has(id) ? '\nThe attachment index has not been loaded in this view. Retrieve attachments from the official bid document.' : ''}`;
+  const productContext=S.products.get(id);
+  const text = `First provide a BID INTELLIGENCE SNAPSHOT using verified sources. Products in stored official BOQ: ${productContext?.item_names?.join('; ')||'Products processing'} (${productContext?.item_count??'unknown'} rows). Location: ${t.location||'Unknown'}; location verification: ${t.location_evidence?.verification||'UNVERIFIED'}.\nRead and analyze GeM Bid ${t.bid_number}: ${t.title}. Buyer: ${t.buyer || 'not recorded'}. Closing: ${deadline(t)}. Recorded lifecycle: ${lifecycleLabel(t)}. Last source check: ${stamp(t.last_source_checked_at)}. Read the official links and current bid conditions before answering. Do not invent missing facts. Explain eligibility, turnover/experience, MSME relaxations, EMD/ePBG, OEM authorization, Make in India, Bid-to-RA, specifications, required documents, restrictive clauses, risks, possible OEM matches and next actions. Official links:\n${links.join('\n') || 'No verified official links available; request the bid document.'}${!S.docs.has(id) ? '\nThe attachment index has not been loaded in this view. Retrieve attachments from the official bid document.' : ''}`;
   window.open('https://chatgpt.com/?q=' + encodeURIComponent(text), '_blank', 'noopener,noreferrer');
 }
 async function openFromLocation() {
@@ -379,6 +410,13 @@ function setAuthMode(mode){
  $('passwordHint').hidden=!signup&&!reset;$('forgotPassword').hidden=signup||recover||reset;
  $('authBack').hidden=!recover;$('authSubmit').textContent=signup?'Create account':recover?'Send reset link':reset?'Save new password':'Log in';
  document.querySelectorAll('[data-auth-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.authMode===mode);b.setAttribute('aria-pressed',String(b.dataset.authMode===mode));});
+}
+async function refreshPhoneAvailability(){
+ try { const response=await fetch(PROJECT_URL+'/auth/v1/settings',{headers:H,signal:AbortSignal.timeout(12000)});if(!response.ok)throw new Error('settings_unavailable');const settings=await response.json();const available=settings.external?.phone===true;
+  for(const id of ['phoneLogin','verifyAlertPhone'])$(id).disabled=!available;
+  $('phoneLogin').textContent=available?'Continue with mobile':'Mobile sign-in · setup pending';
+  $('verifyAlertPhone').textContent=available?'Verify mobile number':'Mobile verification · setup pending';
+ }catch{ for(const id of ['phoneLogin','verifyAlertPhone'])$(id).disabled=true; $('phoneLogin').textContent='Mobile sign-in · temporarily unavailable'; }
 }
 function openAuth(mode='login'){
  if(!authClient){toast('Account access could not load. Refresh this page to retry.');return;}
@@ -483,7 +521,7 @@ if(authClient){
  })();
 }
 load();
-
+refreshPhoneAvailability();
 
 // Phone OTP uses the existing Auth provider. Never simulate verification locally.
 $('phoneLogin').onclick=()=>setAuthMode('phone');
@@ -496,6 +534,7 @@ $('phoneForm').onsubmit=async event=>{
    const token=$('phoneCode').value.trim();if(!/^\d{6}$/.test(token)||!AUTH.otpPhone)throw new Error('Enter the six-digit code sent to your number.');
    const {data,error}=await authClient.auth.verifyOtp({phone:AUTH.otpPhone,token,type:AUTH.otpKind});if(error)throw error;
    AUTH.session=data.session||AUTH.session;AUTH.otpPhone=null;$('phoneCode').value='';await readAccess();setAuthMode('account');authFeedback('Mobile number verified. You can now save your alert preferences.');
+   if(AUTH.pending){AUTH.busy=false;await requestMemberAction(AUTH.pending);}
   }else{
    let phone=$('phoneNumber').value.replace(/[\s()-]/g,'');if(/^[6-9]\d{9}$/.test(phone))phone='+91'+phone;
    if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Enter your mobile number with country code, for example +91 followed by 10 digits.');
@@ -516,9 +555,10 @@ async function loadAlertPreferences(){
  $('alertFeedback').textContent='';$('alertConsent').checked=false;
  $('alertPhoneStatus').textContent=user.phone_confirmed_at&&user.phone?'Verified mobile: +'+user.phone.replace(/^\+/,''):'Verify your mobile number to save WhatsApp preferences.';
  try{
-  const {data,error}=await authClient.from('tender_alert_subscriptions').select('categories,event_types,enabled').eq('user_id',user.id).maybeSingle();if(error)throw error;
+  const {data,error}=await authClient.from('tender_alert_subscriptions').select('categories,event_types,locations,enabled').eq('user_id',user.id).maybeSingle();if(error)throw error;
   if(AUTH.session?.user.id!==user.id)return;
   document.querySelectorAll('[name=alertCategory]').forEach(input=>input.checked=(data?.categories||['all']).includes(input.value));
+  document.querySelectorAll('[name=alertLocation]').forEach(input=>input.checked=(data?.locations||['NON_DELHI','MULTI_LOCATION','UNKNOWN']).includes(input.value));
   document.querySelectorAll('[name=alertEvent]').forEach(input=>input.checked=(data?.event_types||['new','extended','changed','closing']).includes(input.value));
   $('alertFeedback').textContent=data?(data.enabled?'Preferences saved. WhatsApp delivery is awaiting setup.':'Alerts are paused.'):'';
  }catch{$('alertFeedback').textContent='Preferences could not load. Please reopen your account to retry.';}
@@ -531,9 +571,10 @@ async function saveAlertPreferences(enabled){
  try{
   const categories=[...document.querySelectorAll('[name=alertCategory]:checked')].map(i=>i.value);
   const events=[...document.querySelectorAll('[name=alertEvent]:checked')].map(i=>i.value);
-  if(enabled&&(!categories.length||!events.length))throw new Error('Choose at least one category and one alert type.');
+  const locations=[...document.querySelectorAll('[name=alertLocation]:checked')].map(i=>i.value);
+  if(enabled&&(!categories.length||!events.length||!locations.length))throw new Error('Choose at least one category, location and alert type.');
   if(enabled&&!$('alertConsent').checked)throw new Error('Please agree to WhatsApp alerts before saving.');
-  const {error}=await authClient.rpc('save_my_alert_preferences',{p_categories:categories,p_event_types:events,p_enabled:enabled,p_consent:$('alertConsent').checked});if(error)throw error;
+  const {error}=await authClient.rpc('save_my_location_alert_preferences',{p_categories:categories,p_event_types:events,p_locations:locations,p_enabled:enabled,p_consent:$('alertConsent').checked});if(error)throw error;
   $('alertFeedback').classList.remove('error');$('alertFeedback').textContent=enabled?'Saved. Messages will begin only after WhatsApp delivery is connected.':'Alerts paused.';
  }catch(error){$('alertFeedback').classList.add('error');$('alertFeedback').textContent=error.message||'Preferences could not be saved.';}
  finally{AUTH.busy=false;$('saveAlerts').disabled=false;$('pauseAlerts').disabled=false;}
