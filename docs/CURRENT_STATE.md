@@ -11,3 +11,5 @@
 - One complete 76-lane keyword discovery job finished. Its document dependencies remain pending. Deep and daily discovery each passed 289 of 1,844 lanes with no current source errors at this checkpoint.
 - Full Phase 1 acceptance remains OPEN until complete reconciliation and document verification succeed. No zero-missed-bid guarantee is claimed.
 - Backend recovery sources and detailed operational instructions are preserved separately from this public repository.
+
+At 08:19 UTC on 21 September: 1,342 stored bids, 693 reviewed active records and 16 extended records. Deep and daily discovery passed 442 and 432 lanes respectively, with temporary GeM server errors retained for retry. A bounded-batch worker update was deployed at 08:24 UTC to improve document throughput and retry failed sources before the full sweep ends. Full acceptance remains open.

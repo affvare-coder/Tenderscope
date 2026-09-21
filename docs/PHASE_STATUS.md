@@ -10,6 +10,8 @@
 | Monetization foundation | Ready for future activation | Verified membership, server-side access policy and subscription entitlement integration; payments not enabled |
 | 2–8 | Deferred | Do not start substantial future phases until Phase 1 acceptance |
 
-29 automated tests passed. SQL transaction tests passed for identity, unchanged observations, stale/partial safety, extension precision and history, same-URL document changes, queue resumption and permissions. Frontend syntax and production build passed. Live member acceptance returned a 485,768-byte PDF and CSV with HTTP 200; anonymous download returned HTTP 401.
+33 automated tests passed. SQL transaction tests passed for identity, unchanged observations, stale/partial safety, extension precision and history, same-URL document changes, queue resumption and permissions. Frontend syntax and production build passed. Live member acceptance returned a 485,768-byte PDF and CSV with HTTP 200; anonymous download returned HTTP 401.
 
 Still unverified: completion of deep/daily sweeps and every document dependency; external email delivery and real-user Google consent; visual inspection on a physical mobile device. The interface contains responsive layouts. Source health remains degraded while full-run acceptance is incomplete.
+
+A 21 September queue repair adds bounded document batches, active/recent document priority, fair discovery scheduling and earlier retries for temporary source failures. Regression and rollback-only queue acceptance tests passed. The remaining collection backlog and real source errors remain visible; this is not a claim of completed coverage.
