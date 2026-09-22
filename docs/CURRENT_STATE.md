@@ -1,4 +1,16 @@
-# Current state — 21 September 2026
+# Current state — 22 September 2026
+
+## Latest reliability release
+
+The document worker now spaces temporary retries, preserves an immutable failure record, and reuses complete PDF parsing only for matching source bytes and parser version. Incomplete scans retain their page progress and links. Invalid or blocked evidence remains held for review.
+
+The previously blocked 15,982,114-byte attachment for GEM/2026/B/7984244 was verified on the live system at 03:54:45 UTC on 22 September. Two earlier failed jobs were resolved using that newer exact-source verification; their original errors remain recorded. Existing bids, dates, source history and earlier source checkpoints are preserved.
+
+50 backend tests and database acceptance checks passed, including retry pacing, expired leases, unchanged/changed PDF cache behavior, complete annotation scans, identity checks, queue fairness and private data access. Frontend application code is unchanged in this release.
+
+Phase 1 acceptance remains open: at 03:55 UTC, deep and daily discovery had completed 1,840 and 1,841 of 1,844 lanes, with about 7,100 document jobs pending. Full hourly/four-hour completion has not been demonstrated. Phone sign-in and WhatsApp delivery still need their providers configured.
+
+## Earlier checkpoints
 
 - Website: https://tenderscope-healthcare.netlify.app
 - Public frontend repository: `affvare-coder/Tenderscope`, branch `main`.

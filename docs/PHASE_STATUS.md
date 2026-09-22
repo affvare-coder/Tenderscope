@@ -1,4 +1,8 @@
-# Phase status — 21 September 2026
+# Phase status — 22 September 2026
+
+Latest acceptance: 50 backend tests passed. Database transaction checks passed for paced retries beyond five attempts, safe lease recovery, retained error history, source-hash-based recovery, correct PDF identity, private cache permissions and document-priority fairness. The 16 MB official attachment previously blocked by the old limit is now verified live. Previous source is retained for rollback.
+
+The complete Phase 1 gate remains OPEN. The remaining source lanes and document dependencies still need to finish; cadence is not established by the presence of cron schedules.
 
 | Phase | Status | Evidence |
 |---|---|---|
