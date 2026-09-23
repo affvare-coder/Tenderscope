@@ -19,3 +19,8 @@ The complete Phase 1 gate remains OPEN. The remaining source lanes and document 
 Still unverified: completion of deep/daily sweeps and every document dependency; external email delivery and real-user Google consent; visual inspection on a physical mobile device. The interface contains responsive layouts. Source health remains degraded while full-run acceptance is incomplete.
 
 A 21 September queue repair adds bounded document batches, active/recent document priority, fair discovery scheduling and earlier retries for temporary source failures. Regression and rollback-only queue acceptance tests passed. The remaining collection backlog and real source errors remain visible; this is not a claim of completed coverage.
+
+
+## 2026-09-22 bid refresh and channel release
+
+Public frontend validation: six tests pass, including automatic refresh of an open bid and its inclusion in Extended. Backend: 55 checks pass for classification, document reuse, retry and identity preservation. Phase 1 coverage remains open while broad reconciliation and document backlog continue. The channel follow link is available; automatic WhatsApp publishing is NOT connected and no delivery is claimed.

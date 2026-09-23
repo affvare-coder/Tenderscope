@@ -37,3 +37,8 @@ Delhi-only records are omitted from default feeds. Mixed locations containing De
 Phone sign-in and WhatsApp delivery require configured providers. The interface shows unavailable setup; it does not claim that messages are sending. Location and category choices, consent, and pause controls are stored per verified account. No payment or provider connection is enabled by this release.
 
 Validation: 41 deterministic backend tests, 4 frontend behavior tests and rollback-only database checks for product history, source hash freshness, location routing and queue fairness. Full reconciliation remains incomplete; at the initial live check there were over 7,000 queued documents. Premium eligibility, OEM/price enrichment, Vault/document generation and an in-app Copilot remain subsequent phases.
+
+
+## 2026-09-22 bid refresh and channel release
+
+The uploaded TenderScope Healthcare logo is used in the sidebar and mobile header. A public floating Follow on WhatsApp link opens the owner-provided TenderScope channel. Bid details, documents, products and event histories now refresh while the dialog remains open; Refresh bid provides an immediate database refresh. Backend repairs recovered 36 missed extensions, including GEM/2026/B/7945801 (1 October 2026, 15:00 IST), and two previously missing implant bids. Existing identities and deadline history were retained.

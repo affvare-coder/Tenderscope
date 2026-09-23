@@ -21,3 +21,8 @@ Private recovery instructions, rules, migrations, tests and worker sources are i
 - Finish the initial document backlog before claiming hourly/four-hour completed coverage. The remaining source scans can contain many pages even when only a few lanes remain.
 - Attachments above the bounded worker limit and any blocked/invalid source require review. Do not mark them verified by changing a status alone.
 - Continue using the existing private recovery checkpoint for server logic and restoration. Public repository updates contain frontend code and limited operational documentation only.
+
+
+## 2026-09-22 bid refresh and channel release
+
+Monitor the remaining official-document queue and complete source coverage acceptance. Connect an authorized WhatsApp channel publisher before enabling automatic channel delivery. Public channel URL: https://whatsapp.com/channel/0029Vb8ryZBADTOClb4BY80f. Keep private integration code and credentials outside this public repository.
