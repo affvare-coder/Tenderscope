@@ -4,7 +4,7 @@ const API_URL = PROJECT_URL + '/rest/v1';
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { all: [], filtered: [], shown: 40, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, selected: null, detailRequest: 0, sort: 'deadline' };
+const S = { all: [], filtered: [], shown: 40, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'deadline' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
@@ -112,6 +112,10 @@ async function api(path) {
     const response = await fetch(API_URL + path, { headers: H, cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
     return await response.json();
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('The connection timed out');
+    if (error instanceof TypeError) throw new Error('The data service could not be reached');
+    throw error;
   } finally { clearTimeout(timeout); }
 }
 async function pages(path, size = 500) {
@@ -124,37 +128,55 @@ async function pages(path, size = 500) {
   }
   return rows;
 }
+const SNAPSHOT_KEY = 'tenderscope.public-register.v1';
+function restoreRegister() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null');
+    if (!saved || !Array.isArray(saved.rows) || !saved.rows.length || !time(saved.savedAt) || Date.now() - time(saved.savedAt) > 86400000 || time(saved.savedAt) > Date.now()) return false;
+    S.all = saved.rows.filter(t => t && typeof t.id === 'string' && typeof t.bid_number === 'string' && eligibleRecord(t));
+    if (!S.all.length) return false;
+    S.loaded = true; S.lastLoadedAt = saved.savedAt;
+    categories(); kpis(); filter();
+    $('errorState').hidden = false;
+    $('errorState').textContent = `Showing the last loaded register from ${stamp(saved.savedAt)} while reconnecting. Check each bid’s source timestamp before relying on it.`;
+    return true;
+  } catch { return false; }
+}
+function saveRegister() {
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt:S.lastLoadedAt, rows:S.all})); }
+  catch { /* Storage may be disabled or full; live loading still works. */ }
+}
 async function load({ quiet = false } = {}) {
   if (S.loading) return;
   S.loading = true;
   $('refreshBtn').disabled = true;
+  if (!S.loaded) restoreRegister();
   if (!quiet && !S.loaded) $('loadingState').hidden = false;
-  const result = await Promise.allSettled([
-    pages('/tenders?select=*&order=deadline.asc.nullslast,id.asc'),
-    api('/rpc/phase1_health')
-  ]);
-  if (result[0].status === 'fulfilled') {
-    S.all = [...new Map(result[0].value.map(t => [t.id, t])).values()].filter(eligibleRecord);
-    S.docs.clear(); S.loaded = true;
+  // Monitoring must not hold the bid list behind a second, slower request.
+  api('/rpc/phase1_health').then(value => renderHealth(value), error => renderHealth(null, error.message));
+  try {
+    const rows = await pages('/tenders?select=*&order=deadline.asc.nullslast,id.asc');
+    S.all = [...new Map(rows.map(t => [t.id, t])).values()].filter(eligibleRecord);
+    S.docs.clear(); S.loaded = true; S.lastLoadedAt = new Date().toISOString();
+    saveRegister();
     $('errorState').hidden = true;
     categories(); kpis(); filter({ preserveShown: quiet });
     loadProductSummaries();
-    $('screenRefresh').textContent = `Screen refreshed ${stamp(new Date())}. Automatic refresh every minute while this page is visible.`;
+    $('screenRefresh').textContent = `Screen refreshed ${stamp(S.lastLoadedAt)}. Automatic refresh every minute while this page is visible.`;
     if (S.selected && $('bidDialog').open) {
       if (byId(S.selected.id)) await openBid(S.selected.id, {updateLocation:false, preserveView:true});
       else $('detailFeedback').textContent = 'This bid is no longer in the public register. Check the official GeM source for its status.';
     } else await openFromLocation();
-  } else {
+  } catch (error) {
     $('errorState').hidden = false;
-    $('errorState').textContent = `${S.loaded ? 'Refresh failed. Previously loaded records remain visible; freshness is not confirmed.' : 'The bid database could not be loaded.'} ${result[0].reason.message}. Use refresh to retry.`;
+    $('errorState').textContent = `${S.loaded ? `Refresh failed. Showing the register last loaded ${stamp(S.lastLoadedAt)}; freshness is not confirmed.` : 'Bid data is temporarily unavailable. This does not mean there are no bids.'} ${error.message}. Refresh will retry automatically.`;
     $('screenRefresh').textContent = 'Screen refresh failed. Automatic retries continue while this page is visible.';
-    if (!S.loaded) $('resultCount').textContent = 'Data unavailable';
+    if (!S.loaded) { kpis(); render(); $('resultCount').textContent = 'Bid data unavailable'; }
+  } finally {
+    $('loadingState').hidden = true;
+    $('refreshBtn').disabled = false;
+    S.loading = false;
   }
-  if (result[1].status === 'fulfilled') renderHealth(result[1].value);
-  else renderHealth(null, result[1].reason.message);
-  $('loadingState').hidden = true;
-  $('refreshBtn').disabled = false;
-  S.loading = false;
 }
 function renderHealth(raw, error = '') {
   const health = Array.isArray(raw) ? raw[0] : raw;
@@ -183,12 +205,12 @@ function categories() {
 }
 function kpis() {
   const live = S.all.filter(t => matchesView(t, 'active'));
-  $('kpiLive').textContent = live.length.toLocaleString('en-IN');
-  $('kpiUrgent').textContent = live.filter(t => matchesView(t, 'closing')).length.toLocaleString('en-IN');
-  $('kpiDefence').textContent = live.filter(defence).length.toLocaleString('en-IN');
-  $('kpiNewToday').textContent = live.filter(recentlyDiscovered).length.toLocaleString('en-IN');
+  $('kpiLive').textContent = S.loaded ? live.length.toLocaleString('en-IN') : '—';
+  $('kpiUrgent').textContent = S.loaded ? live.filter(t => matchesView(t, 'closing')).length.toLocaleString('en-IN') : '—';
+  $('kpiDefence').textContent = S.loaded ? live.filter(defence).length.toLocaleString('en-IN') : '—';
+  $('kpiNewToday').textContent = S.loaded ? live.filter(recentlyDiscovered).length.toLocaleString('en-IN') : '—';
   document.querySelectorAll('[data-view]').forEach(button => {
-    button.querySelector('.nav-count').textContent = S.all.filter(t => matchesView(t, button.dataset.view)).length.toLocaleString('en-IN');
+    button.querySelector('.nav-count').textContent = S.loaded ? S.all.filter(t => matchesView(t, button.dataset.view)).length.toLocaleString('en-IN') : '—';
     button.classList.toggle('active', button.dataset.view === S.view);
     button.setAttribute('aria-pressed', String(button.dataset.view === S.view));
   });
@@ -242,6 +264,11 @@ function card(t) {
 function render() {
   $('viewHeading').textContent = VIEW[S.view][0];
   $('viewDescription').textContent = VIEW[S.view][1];
+  if (!S.loaded) {
+    $('resultCount').textContent = S.loading ? 'Loading the healthcare register…' : 'Bid data unavailable';
+    $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('exportBtn').disabled = true;
+    return;
+  }
   const sortLabel = { deadline: 'closing date first', newest: 'newest discovered first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
   $('resultCount').textContent = `${S.filtered.length.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.filtered.length === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
   $('tenderList').innerHTML = S.filtered.slice(0, S.shown).map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
