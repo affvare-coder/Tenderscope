@@ -155,7 +155,7 @@ async function load({ quiet = false } = {}) {
   // Monitoring must not hold the bid list behind a second, slower request.
   api('/rpc/phase1_health').then(value => renderHealth(value), error => renderHealth(null, error.message));
   try {
-    const rows = await pages('/tenders?select=*&order=deadline.asc.nullslast,id.asc');
+    const rows = await api('/rpc/public_tender_register?p_limit=500&p_offset=0');
     S.all = [...new Map(rows.map(t => [t.id, t])).values()].filter(eligibleRecord);
     S.docs.clear(); S.loaded = true; S.lastLoadedAt = new Date().toISOString();
     saveRegister();
