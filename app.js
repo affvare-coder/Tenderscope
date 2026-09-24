@@ -155,14 +155,14 @@ async function load({ quiet = false } = {}) {
   // Monitoring must not hold the bid list behind a second, slower request.
   api('/rpc/phase1_health').then(value => renderHealth(value), error => renderHealth(null, error.message));
   try {
-    const rows = await api('/rpc/public_tender_register?p_limit=500&p_offset=0');
+    const rows = await api('/rpc/public_tender_register?p_limit=200&p_offset=0');
     S.all = [...new Map(rows.map(t => [t.id, t])).values()].filter(eligibleRecord);
     S.docs.clear(); S.loaded = true; S.lastLoadedAt = new Date().toISOString();
     saveRegister();
     $('errorState').hidden = true;
     categories(); kpis(); filter({ preserveShown: quiet });
     loadProductSummaries();
-    $('screenRefresh').textContent = `Screen refreshed ${stamp(S.lastLoadedAt)}. Automatic refresh every minute while this page is visible.`;
+    $('screenRefresh').textContent = `Screen refreshed ${stamp(S.lastLoadedAt)}. Automatic refresh every hour while this page is visible.`;
     if (S.selected && $('bidDialog').open) {
       if (byId(S.selected.id)) await openBid(S.selected.id, {updateLocation:false, preserveView:true});
       else $('detailFeedback').textContent = 'This bid is no longer in the public register. Check the official GeM source for its status.';
@@ -421,7 +421,7 @@ document.addEventListener('keydown', event => {
   if (event.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable && !$('bidDialog').open && !$('authDialog').open) { event.preventDefault(); $('searchInput').focus(); }
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { load({ quiet: true }); sessionToken().catch(() => {}); } });
-setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 60000);
+setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 3600000);
 
 // The supported Auth client owns PKCE, callback exchange and refresh-token rotation.
 const AUTH = {session:null,mode:'login',pending:null,busy:false,access:null,otpPhone:null,otpKind:null,nextOtpAt:0};
