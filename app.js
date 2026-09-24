@@ -107,7 +107,7 @@ function changeLabel(code) {
 }
 async function api(path) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(API_URL + path, { headers: H, cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
@@ -161,7 +161,7 @@ async function load({ quiet = false } = {}) {
     saveRegister();
     $('errorState').hidden = true;
     categories(); kpis(); filter({ preserveShown: quiet });
-    loadProductSummaries();
+    if (S.view !== 'active') loadProductSummaries();
     $('screenRefresh').textContent = `Screen refreshed ${stamp(S.lastLoadedAt)}. Automatic refresh every hour while this page is visible.`;
     if (S.selected && $('bidDialog').open) {
       if (byId(S.selected.id)) await openBid(S.selected.id, {updateLocation:false, preserveView:true});
