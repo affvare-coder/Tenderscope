@@ -153,7 +153,7 @@ async function load({ quiet = false } = {}) {
   if (!S.loaded) restoreRegister();
   if (!quiet && !S.loaded) $('loadingState').hidden = false;
   // Monitoring must not hold the bid list behind a second, slower request.
-  api('/rpc/phase1_health').then(value => renderHealth(value), error => renderHealth(null, error.message));
+
   try {
     const rows = await api('/rpc/public_tender_register?p_limit=200&p_offset=0');
     S.all = [...new Map(rows.map(t => [t.id, t])).values()].filter(eligibleRecord);
@@ -266,14 +266,13 @@ function render() {
   $('viewDescription').textContent = VIEW[S.view][1];
   if (!S.loaded) {
     $('resultCount').textContent = S.loading ? 'Loading the healthcare register…' : 'Bid data unavailable';
-    $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('exportBtn').disabled = true;
+    $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true;
     return;
   }
   const sortLabel = { deadline: 'closing date first', newest: 'newest discovered first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
   $('resultCount').textContent = `${S.filtered.length.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.filtered.length === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
   $('tenderList').innerHTML = S.filtered.slice(0, S.shown).map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
   $('loadMoreBtn').hidden = S.shown >= S.filtered.length;
-  $('exportBtn').disabled = !S.loaded || !S.filtered.length;
 }
 async function docs(id) {
   if (S.docs.has(id)) return S.docs.get(id);
@@ -471,7 +470,6 @@ function renderAccount(){
  const name=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'Member';
  $('sidebarMemberName').textContent=name;$('sidebarAvatar').textContent=name.slice(0,1).toUpperCase();
  $('sidebarMemberPlan').textContent=AUTH.access?.reason==='subscription'?'Subscriber':'Free member';
- $('exportBtn').setAttribute('title',user?'Export the currently filtered bids as CSV':'Log in to export the currently filtered bids');
  if(S.selected&&S.docs.has(S.selected.id)&&$('detailDocuments'))$('detailDocuments').innerHTML=docPanel(S.docs.get(S.selected.id));
 }
 async function sessionToken(){
@@ -507,7 +505,6 @@ $('authTabs').onclick=e=>{const b=e.target.closest('[data-auth-mode]');if(b)setA
 $('closeAuthDialog').onclick=()=>$('authDialog').close();
 $('forgotPassword').onclick=()=>setAuthMode('recover');$('authBack').onclick=()=>setAuthMode('login');
 $('togglePassword').onclick=()=>{const show=$('authPassword').type==='password';$('authPassword').type=show?'text':'password';$('togglePassword').textContent=show?'Hide':'Show';$('togglePassword').setAttribute('aria-label',show?'Hide password':'Show password');};
-$('exportBtn').onclick=()=>S.filtered.length?requestMemberAction({kind:'export',bid_ids:S.filtered.map(t=>t.id)}):toast('There are no bids in this view to export.');
 $('googleLogin').onclick=async()=>{
  authFeedback('Opening Google sign-in…');
  try{
