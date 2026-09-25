@@ -1,10 +1,10 @@
 'use strict';
 const PROJECT_URL = 'https://agdmlgbfxoqhztiormij.supabase.co';
-const API_URL = PROJECT_URL + '/rest/v1';
+const API_URL = '/api/public';
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { all: [], filtered: [], shown: 40, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'deadline' };
+const S = { all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'deadline' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
@@ -13,7 +13,7 @@ const VIEW = {
   active: ['All opportunities', 'Healthcare bids from official GeM sources. Delhi-only bids are in Delhi healthcare. Choose a bid to explore its documents and recorded changes.'],
   new: ['Newly discovered', 'Open healthcare bids first detected by TenderScope within the last 24 hours.'],
   updated: ['Updated opportunities', 'Open bids with a recorded change after their first publication.'],
-  extended: ['Extended opportunities', 'Open bids with an extension recorded by the source monitor.'],
+  extended: ['Extended opportunities', 'Open bids with a verified deadline extension.'],
   closing: ['Closing soon', 'Open bids with a verified closing time within the next 72 hours.'],
   dgafms: ['DGAFMS opportunities', 'Open bids identified as DG Armed Forces Medical Services.'],
   echs: ['ECHS opportunities', 'Open Ex-Servicemen Contributory Health Scheme opportunities.'],
@@ -128,119 +128,123 @@ async function pages(path, size = 500) {
   }
   return rows;
 }
-const SNAPSHOT_KEY = 'tenderscope.public-register.v1';
-function restoreRegister() {
+const SNAPSHOT_KEY = 'tenderscope.public-page.v2';
+function feedParams() {
+  return new URLSearchParams({p_view:S.view,p_search:$('searchInput').value.trim(),p_sort:S.sort,p_offset:String(S.pageOffset),p_limit:String(S.pageSize),p_filters:JSON.stringify({category:$('categoryFilter').value,priority:$('priorityFilter').value,urgency:$('urgencyFilter').value,defence:$('defenceFilter').value,time:$('timeFilter').value})});
+}
+function applyFeed(data, key, savedAt) {
+  if (!data || !Array.isArray(data.rows) || !Number.isFinite(data.total) || !data.counts || data.rows.length > S.pageSize) throw new Error('Unexpected bid response');
+  S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && eligibleRecord(t)).map(t => [t.id,t])).values()];
+  S.filtered = S.all; S.total = data.total; S.counts = data.counts; S.categories = data.categories || [];
+  S.pageKey = key; S.loaded = true; S.lastLoadedAt = savedAt;
+  categories(); kpis(); render();
+}
+function restoreRegister(key = feedParams().toString()) {
   try {
     const saved = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null');
-    if (!saved || !Array.isArray(saved.rows) || !saved.rows.length || !time(saved.savedAt) || Date.now() - time(saved.savedAt) > 86400000 || time(saved.savedAt) > Date.now()) return false;
-    S.all = saved.rows.filter(t => t && typeof t.id === 'string' && typeof t.bid_number === 'string' && eligibleRecord(t));
-    if (!S.all.length) return false;
-    S.loaded = true; S.lastLoadedAt = saved.savedAt;
-    categories(); kpis(); filter();
+    if (!saved || saved.key !== key || !time(saved.savedAt) || Date.now() - time(saved.savedAt) > 86400000 || time(saved.savedAt) > Date.now()) return false;
+    applyFeed(saved.data, key, saved.savedAt);
     $('errorState').hidden = false;
-    $('errorState').textContent = `Showing the last loaded register from ${stamp(saved.savedAt)} while reconnecting. Check each bid’s source timestamp before relying on it.`;
+    $('errorState').textContent = `Showing saved bids from ${stamp(saved.savedAt)} while reconnecting.`;
     return true;
   } catch { return false; }
 }
-function saveRegister() {
-  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt:S.lastLoadedAt, rows:S.all})); }
-  catch { /* Storage may be disabled or full; live loading still works. */ }
+function saveRegister(data) {
+  try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt:S.lastLoadedAt, key:S.pageKey, data})); }
+  catch { /* Browsing remains available when storage is disabled. */ }
 }
 async function load({ quiet = false } = {}) {
-  if (S.loading) return;
+  const key = feedParams().toString(), request = ++S.requestId;
   S.loading = true;
   $('refreshBtn').disabled = true;
-  if (!S.loaded) restoreRegister();
-  if (!quiet && !S.loaded) $('loadingState').hidden = false;
-  // Monitoring must not hold the bid list behind a second, slower request.
-
+  if (S.pageKey !== key) { S.loaded = false; S.all = []; S.filtered = []; restoreRegister(key); }
+  $('loadingState').hidden = quiet && S.loaded;
+  render();
   try {
-    const rows = await api('/rpc/public_tender_register?p_limit=200&p_offset=0');
-    S.all = [...new Map(rows.map(t => [t.id, t])).values()].filter(eligibleRecord);
-    S.docs.clear(); S.loaded = true; S.lastLoadedAt = new Date().toISOString();
-    saveRegister();
+    const data = await api('/rpc/public_tender_feed?' + key);
+    if (request !== S.requestId) return;
+    // A shrinking register can remove the last page between requests.
+    if (!data.rows?.length && data.total > 0 && S.pageOffset >= data.total) {
+      S.pageOffset = Math.floor((data.total - 1) / S.pageSize) * S.pageSize;
+      return load({quiet});
+    }
+    applyFeed(data, key, new Date().toISOString());
+    S.docs.clear(); saveRegister(data);
     $('errorState').hidden = true;
-    categories(); kpis(); filter({ preserveShown: quiet });
-    if (S.view !== 'active') loadProductSummaries();
-    $('screenRefresh').textContent = `Screen refreshed ${stamp(S.lastLoadedAt)}. Automatic refresh every hour while this page is visible.`;
-    if (S.selected && $('bidDialog').open) {
-      if (byId(S.selected.id)) await openBid(S.selected.id, {updateLocation:false, preserveView:true});
-      else $('detailFeedback').textContent = 'This bid is no longer in the public register. Check the official GeM source for its status.';
-    } else await openFromLocation();
+    loadProductSummaries();
+    if (S.selected && $('bidDialog').open) refreshSelectedBid();
+    else openFromLocation();
   } catch (error) {
+    if (request !== S.requestId) return;
     $('errorState').hidden = false;
-    $('errorState').textContent = `${S.loaded ? `Refresh failed. Showing the register last loaded ${stamp(S.lastLoadedAt)}; freshness is not confirmed.` : 'Bid data is temporarily unavailable. This does not mean there are no bids.'} ${error.message}. Refresh will retry automatically.`;
-    $('screenRefresh').textContent = 'Screen refresh failed. Automatic retries continue while this page is visible.';
-    if (!S.loaded) { kpis(); render(); $('resultCount').textContent = 'Bid data unavailable'; }
+    $('errorState').textContent = `${S.loaded ? `Refresh failed. Showing saved bids from ${stamp(S.lastLoadedAt)}; freshness is not confirmed.` : 'Bid data is temporarily unavailable. This does not mean there are no bids.'} ${error.message}. Please retry.`;
+    if (!S.loaded) { kpis(); render(); }
   } finally {
-    $('loadingState').hidden = true;
-    $('refreshBtn').disabled = false;
-    S.loading = false;
+    if (request === S.requestId) {
+      $('loadingState').hidden = true; $('refreshBtn').disabled = false; S.loading = false; render();
+    }
   }
-}
-function renderHealth(raw, error = '') {
-  const health = Array.isArray(raw) ? raw[0] : raw;
-  const mappings = { lastGemContact: 'last_gem_contact', lastHourlySync: 'last_hourly_sync', lastDeepSync: 'last_deep_sync', lastDailySync: 'last_daily_sync' };
-  Object.entries(mappings).forEach(([id, key]) => $(id).textContent = stamp(health?.[key]));
-  const contact = time(health?.last_gem_contact);
-  const stale = contact === null || Date.now() - contact > 2 * 36e5;
-  const status = String(health?.status || 'unknown').toLowerCase();
-  const bad = /fail|error|block|degrad|partial|unavailable/.test(status) || Number(health?.failures) > 0;
-  const healthy = health && !bad && !stale;
-  const label = !health ? 'Status unavailable' : bad ? 'Source checks need attention' : stale ? 'Fresh check pending' : 'Source contact recorded';
-  $('headerStatus').textContent = label;
-  $('statusDot').className = `live-dot ${healthy ? '' : 'checking'}`;
-  $('syncStatus').textContent = label;
-  $('syncStatus').className = `badge ${healthy ? 'verified' : 'pending'}`;
-  $('syncMessage').textContent = !health ? `Monitor status could not be loaded. ${error}. No successful source contact is assumed.` : bad ? `Monitor reports ${status.replace(/_/g, ' ')}. Existing records remain available; check official GeM documents for current conditions.` : stale ? 'No successful GeM contact is recorded within the last two hours. Bid freshness is not confirmed.' : 'Source timestamps below are reported by the monitor. A screen refresh alone does not mean GeM was checked.';
-  const coverage = health?.coverage ? Object.entries(health.coverage).map(([mode,run])=>`${mode}: ${run.stats?.completed_lanes ?? 0}/${run.stats?.total_lanes || '…'} searches completed${run.stats?.coverage_errors ? `, ${run.stats.coverage_errors} awaiting retry` : ''}`).join(' · ') : '';
-  $('coverageProgress').textContent=coverage;
-  $('syncCounts').textContent = health ? `Latest reported counts · scanned: ${health.records_scanned ?? '—'} · new: ${health.new_bids ?? '—'} · updated: ${health.updated_bids ?? '—'} · extended: ${health.extended_bids ?? '—'} · failed checks: ${health.failures ?? '—'}` : '';
 }
 function categories() {
   const current = $('categoryFilter').value;
-  const values = [...new Set(S.all.map(t => t.subcategory || t.category).filter(Boolean))].sort();
+  const values = S.categories.filter(Boolean);
   $('categoryFilter').innerHTML = '<option value="">All categories</option>' + values.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join('');
   if (values.includes(current)) $('categoryFilter').value = current;
 }
 function kpis() {
-  const live = S.all.filter(t => matchesView(t, 'active'));
-  $('kpiLive').textContent = S.loaded ? live.length.toLocaleString('en-IN') : '—';
-  $('kpiUrgent').textContent = S.loaded ? live.filter(t => matchesView(t, 'closing')).length.toLocaleString('en-IN') : '—';
-  $('kpiDefence').textContent = S.loaded ? live.filter(defence).length.toLocaleString('en-IN') : '—';
-  $('kpiNewToday').textContent = S.loaded ? live.filter(recentlyDiscovered).length.toLocaleString('en-IN') : '—';
+  for (const [id,key] of Object.entries({kpiLive:'active',kpiUrgent:'closing',kpiDefence:'defence',kpiNewToday:'new'})) $(id).textContent = S.loaded ? Number(S.counts[key] || 0).toLocaleString('en-IN') : '—';
   document.querySelectorAll('[data-view]').forEach(button => {
-    button.querySelector('.nav-count').textContent = S.loaded ? S.all.filter(t => matchesView(t, button.dataset.view)).length.toLocaleString('en-IN') : '—';
+    button.querySelector('.nav-count').textContent = S.loaded ? Number(S.counts[button.dataset.view] || 0).toLocaleString('en-IN') : '—';
     button.classList.toggle('active', button.dataset.view === S.view);
     button.setAttribute('aria-pressed', String(button.dataset.view === S.view));
   });
 }
-function filter({ preserveShown = false } = {}) {
-  const q = $('searchInput').value.trim().toLowerCase(), p = $('priorityFilter').value, c = $('categoryFilter').value, u = $('urgencyFilter').value, d = $('defenceFilter').value, tm = $('timeFilter').value;
-  S.filtered = S.all.filter(t => {
-    const h = hrs(t), df = defence(t), cat = t.subcategory || t.category;
-    return matchesView(t, S.view) && (!q || haystack(t).includes(q)) && (!p || String(t.priority || '').startsWith(p)) && (!c || cat === c) && (!u || (exactDeadline(t) && h !== null && h > 0 && ((u === 'critical' && h < 24) || (u === '72' && h <= 72) || (u === '7d' && h <= 168)))) && (!d || (d === 'yes' && df) || (d === 'no' && !df)) && (!tm || (tm === 'verified' && exactDeadline(t)) || (tm === 'pending' && !exactDeadline(t)));
-  }).sort((a, b) => S.sort === 'newest' ? (time(firstSeen(b)) || 0) - (time(firstSeen(a)) || 0) : S.sort === 'updated' ? (time(b.latest_change_at) || 0) - (time(a.latest_change_at) || 0) : S.sort === 'value' ? (Number(b.estimated_value_inr) || -1) - (Number(a.estimated_value_inr) || -1) : (deadlineTime(a) ?? Infinity) - (deadlineTime(b) ?? Infinity));
-  const count = [p,c,u,d,tm].filter(Boolean).length;
+let filterTimer;
+function filter() {
+  const q = $('searchInput').value.trim();
+  const count = ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].filter(id => $(id).value).length;
   $('filterCount').hidden = !count; $('filterCount').textContent = count;
   $('filterSummary').hidden = !count && !q;
-  $('filterSummary').innerHTML = `${count ? `${count} filter${count === 1 ? '' : 's'} applied` : ''}${count && q ? ' · ' : ''}${q ? `Search: “${esc($('searchInput').value.trim())}”` : ''}<button type="button" data-action="clear-filters">Clear all</button>`;
-  if (!preserveShown) S.shown = 40;
-  render();
+  $('filterSummary').innerHTML = `${count ? `${count} filter${count === 1 ? '' : 's'} applied` : ''}${count && q ? ' · ' : ''}${q ? `Search: “${esc(q)}”` : ''}<button type="button" data-action="clear-filters">Clear all</button>`;
+  S.pageOffset = 0;
+  // Invalidate an earlier query immediately, before the debounce completes.
+  S.requestId++;
+  clearTimeout(filterTimer); filterTimer = setTimeout(() => load(), 250);
+}
+async function turnPage(direction) {
+  if (S.loading) return;
+  S.pageOffset = Math.max(0, S.pageOffset + direction * S.pageSize);
+  await load();
+  $('opportunities').scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function refreshSelectedBid() {
+  const id = S.selected?.id;
+  if (!id) return;
+  try {
+    const rows = await api(`/tenders?select=*&id=eq.${encodeURIComponent(id)}&limit=1`);
+    if (S.selected?.id !== id || !$('bidDialog').open) return;
+    if (!rows[0] || !eligibleRecord(rows[0])) { $('detailFeedback').textContent = 'This bid is no longer available. Check its official GeM source.'; return; }
+    S.selected = rows[0]; S.all = S.all.map(t => t.id === id ? rows[0] : t); S.filtered = S.all;
+    await openBid(id, {updateLocation:false,preserveView:true});
+  } catch { if (S.selected?.id === id && $('detailFeedback')) $('detailFeedback').textContent = 'This bid could not be refreshed. Previously loaded details remain visible.'; }
 }
 function sourceLink(url, label, className = 'btn ghost') {
   const safe = officialUrl(url);
   return safe ? `<a class="${className}" href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '<span class="unavailable-link">Official link unavailable</span>';
 }
 async function loadProductSummaries() {
-  if(S.productsLoading)return; S.productsLoading=true;
-  try { const rows=await pages('/tender_product_summary?select=*&order=tender_id.asc'); S.products=new Map(rows.map(r=>[r.tender_id,r])); filter({preserveShown:true}); }
-  catch { /* Existing bids remain usable if enrichment is unavailable. */ }
-  finally { S.productsLoading=false; }
+  const ids = S.all.map(t => t.id).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+  if (!ids.length) return;
+  const key = S.pageKey;
+  try {
+    const rows = await api(`/tender_product_summary?select=*&tender_id=in.(${ids.join(',')})&limit=40`);
+    if (S.pageKey !== key) return;
+    S.products = new Map(rows.map(r => [r.tender_id,r])); render();
+  } catch { /* Bid details still provide official product documents. */ }
 }
 function productPreview(t) {
   const summary=S.products.get(t.id);
-  if(!summary?.item_names?.length)return '<div class="product-preview pending"><strong>Products required</strong><span>Products processing</span></div>';
+  if(!summary?.item_names?.length)return '';
   const names=summary.item_names.slice(0,5),remaining=Math.max(0,Number(summary.item_count)-names.length);
   return `<div class="product-preview"><strong>Products required</strong><ul>${names.map(name=>`<li>${esc(name)}</li>`).join('')}</ul>${remaining?`<button class="text-btn" data-action="detail" data-id="${esc(t.id)}">+${remaining} more</button>`:''}<small>Official BOQ · ${Number(summary.item_count)} item rows</small></div>`;
 }
@@ -266,13 +270,16 @@ function render() {
   $('viewDescription').textContent = VIEW[S.view][1];
   if (!S.loaded) {
     $('resultCount').textContent = S.loading ? 'Loading the healthcare register…' : 'Bid data unavailable';
-    $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true;
+    $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('previousPageBtn').hidden = true; $('pageSummary').textContent = '';
     return;
   }
   const sortLabel = { deadline: 'closing date first', newest: 'newest discovered first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
-  $('resultCount').textContent = `${S.filtered.length.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.filtered.length === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
-  $('tenderList').innerHTML = S.filtered.slice(0, S.shown).map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
-  $('loadMoreBtn').hidden = S.shown >= S.filtered.length;
+  $('resultCount').textContent = `${S.total.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.total === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
+  $('tenderList').innerHTML = S.filtered.map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
+  $('loadMoreBtn').hidden = S.pageOffset + S.all.length >= S.total;
+  $('previousPageBtn').hidden = S.pageOffset === 0;
+  $('loadMoreBtn').disabled = S.loading; $('previousPageBtn').disabled = S.loading;
+  $('pageSummary').textContent = S.total ? `${S.pageOffset + 1}–${S.pageOffset + S.all.length} of ${S.total.toLocaleString('en-IN')}` : '';
 }
 async function docs(id) {
   if (S.docs.has(id)) return S.docs.get(id);
@@ -356,7 +363,7 @@ async function openFromLocation() {
   if (!t && /^GEM\/\d{4}\/B\/\d+$/i.test(requested)) {
     try {
       const rows = await api(`/tenders?select=*&bid_number=eq.${encodeURIComponent(requested)}&limit=1`);
-      if (rows[0] && eligibleRecord(rows[0])) { t = rows[0]; S.all.push(t); }
+      if (rows[0] && eligibleRecord(rows[0])) { t = rows[0]; S.selected = t; }
     } catch {
       $('errorState').hidden = false;
       $('errorState').textContent = 'This bid link could not be loaded. Refresh to retry.';
@@ -370,7 +377,7 @@ async function handleAction(event) {
   const button = event.target.closest('[data-action]'); if (!button) return;
   const id = button.dataset.id;
   if (button.dataset.action === 'detail') await openBid(id);
-  else if (button.dataset.action === 'refresh-detail') await load({quiet:true});
+  else if (button.dataset.action === 'refresh-detail') await refreshSelectedBid();
   else if (button.dataset.action === 'ai') askBid(id);
   else if (button.dataset.action === 'download') await requestMemberAction({kind:'download',document_id:button.dataset.documentId,filename:button.dataset.filename});
   else if (button.dataset.action === 'clear-filters') resetFilters();
@@ -410,7 +417,8 @@ $('menuToggle').onclick = () => { const open = !$('sidebar').classList.contains(
 $('sidebarBackdrop').onclick = closeSidebar;
 $('tenderList').addEventListener('click', handleAction);
 $('detailBody').addEventListener('click', handleAction);
-$('loadMoreBtn').onclick = () => { S.shown += 40; render(); };
+$('loadMoreBtn').onclick = () => turnPage(1);
+$('previousPageBtn').onclick = () => turnPage(-1);
 $('refreshBtn').onclick = () => load();
 $('closeDialog').onclick = () => $('bidDialog').close();
 $('bidDialog').addEventListener('close', () => { S.selected = null; S.detailRequest++; if (location.hash.startsWith('#bid=')) history.replaceState(null, '', location.pathname + location.search); });
@@ -419,7 +427,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeSidebar();
   if (event.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable && !$('bidDialog').open && !$('authDialog').open) { event.preventDefault(); $('searchInput').focus(); }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { load({ quiet: true }); sessionToken().catch(() => {}); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (!S.lastLoadedAt || Date.now() - time(S.lastLoadedAt) > 3600000) load({ quiet: true }); sessionToken().catch(() => {}); } });
 setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 3600000);
 
 // The supported Auth client owns PKCE, callback exchange and refresh-token rotation.
@@ -438,7 +446,7 @@ function setAuthMode(mode){
  if(account){$('accountEmail').textContent=AUTH.session.user.email||AUTH.session.user.phone||'';$('accountPlan').textContent=AUTH.access?.reason==='subscription'?'Active subscriber':AUTH.access?.reason==='trial'?'Member · premium trial':'Free member';loadAlertPreferences();return;}
  const signup=mode==='signup',recover=mode==='recover',reset=mode==='reset';
  $('authTitle').textContent=signup?'Your next opportunity starts here.':recover?'Reset your password.':reset?'Choose a new password.':'Welcome back.';
- $('authDescription').textContent=signup?'Create a free account to download official bid documents and export your shortlist.':recover?'We’ll email a secure link if an account exists for this address.':reset?'Set a password with at least 8 characters.':'Log in to download bid documents and export opportunities.';
+ $('authDescription').textContent=signup?'Create a free account to download official bid documents.':recover?'We’ll email a secure link if an account exists for this address.':reset?'Set a password with at least 8 characters.':'Log in to download official bid documents.';
  $('authTabs').hidden=recover||reset;$('googleLogin').hidden=recover||reset;$('phoneLogin').hidden=recover||reset;$('authDivider').hidden=recover||reset;
  $('authNameLabel').hidden=!signup;$('authName').required=false;
  $('authEmailLabel').hidden=reset;$('authEmail').required=!reset;

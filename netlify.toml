@@ -23,6 +23,14 @@
     Cache-Control = "public, max-age=60, must-revalidate"
 
 [[redirects]]
+  from = "/api/public/*"
+  to = "https://agdmlgbfxoqhztiormij.supabase.co/rest/v1/:splat"
+  status = 200
+  force = true
+  [redirects.headers]
+    apikey = "sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr"
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
