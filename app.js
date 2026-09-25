@@ -107,9 +107,9 @@ function changeLabel(code) {
 }
 async function api(path) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const response = await fetch(API_URL + path, { headers: H, cache: 'no-store', signal: controller.signal });
+    const response = await fetch(API_URL + path, { cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
     return await response.json();
   } catch (error) {
@@ -487,7 +487,7 @@ async function sessionToken(){
 }
 async function readAccess(){
  const token=await sessionToken();if(!token){AUTH.access=null;renderAccount();return;}
- try{const r=await fetch(API_URL+'/rpc/my_access',{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(12000)});AUTH.access=r.ok?await r.json():null;}catch{AUTH.access=null;}
+ try{const r=await fetch(API_URL+'/rpc/my_access',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(12000)});AUTH.access=r.ok?await r.json():null;}catch{AUTH.access=null;}
  renderAccount();
 }
 async function requestMemberAction(action){
