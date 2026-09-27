@@ -254,7 +254,7 @@ function locationPanel(t) {
 }
 function productsPanel(items,documents=[]) {
  const current=items.filter(item=>documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
- if(!current.length)return '<p class="section-note">Products processing. Exact quantities, packs and specifications will appear after the official BOQ is read. Open the official documents below in the meantime.</p>';
+ if(!current.length)return '<p class="section-note">Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
  return `<p class="section-note">OFFICIAL FACT · ${current.length} BOQ rows. Packs and PVMS/NIV remain unverified where the source has no dedicated field. Read the buyer specification for packaging details.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong><small>PVMS: ${esc(item.pvms||'Not specified')} · NIV: ${esc(item.niv||'Not specified')}</small></td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td>${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
 }
@@ -296,24 +296,48 @@ function docPanel(documents) {
     return `<article class="doc-record"><div class="doc-title">${esc(doc.title || doc.filename || doc.kind || 'Document')}</div><div class="doc-meta">${esc(doc.kind || 'attachment')} · Version ${esc(doc.version_no ?? 'not recorded')} · ${esc(state)}</div><div class="doc-meta">Checked: ${esc(stamp(doc.last_checked_at || doc.observed_at))}</div>${safe && !removed ? `<div class="doc-actions"><a class="btn ghost" href="${esc(safe)}" target="_blank" rel="noopener noreferrer">Open source ↗</a><button type="button" class="btn download-btn" data-action="download" data-document-id="${esc(doc.id)}" data-filename="${esc(doc.filename || doc.title || doc.kind || 'document')}">${AUTH.session ? 'Download ↓' : 'Log in to download ↓'}</button></div>` : `<p class="doc-meta">${removed ? 'This document was marked as removed at the source.' : 'A valid official GeM link is not available.'}</p>`}</article>`;
   }).join('')}</div><p class="section-note">Member downloads save a copy from the official source. GeM may restrict access or update a document after it was last checked.</p>`;
 }
-function eventValue(value) {
-  if (value == null) return '';
-  if (typeof value !== 'object') {
-    const text=String(value);
-    if (/^\d{4}-\d{2}-\d{2}T/.test(text) && date(text)) return stamp(text);
-    return text.replace(/_/g,' ').toLowerCase();
+function publicChange(event) {
+  const code=String(event.event_code || event.event_type || '').toUpperCase();
+  const before=event.previous_value, after=event.new_value;
+  const closing=['EXTENDED','DEADLINE_EXTENDED','CLOSING_DATE_CHANGED','DEADLINE_CHANGED','DEADLINE_SHORTENED'].includes(code);
+  if (closing || code==='OPENING_DATE_CHANGED') {
+    const field=closing?'deadline':'opening_at';
+    const value=v=>v && typeof v==='object'?v[field]:v;
+    const old=value(before), next=value(after);
+    return {label:changeLabel(code),detail:[date(old)?`From ${stamp(old)}`:'',date(next)?`To ${stamp(next)}`:''].filter(Boolean).join(' → '),key:`${field}:${time(old)}:${time(next)}`};
   }
-  const hidden=new Set(['id','document_id','tender_id','content_hash','official_url','source_url','document_key']);
-  return Object.entries(value).filter(([key])=>!hidden.has(key)).map(([key, val]) => `${key.replace(/_/g, ' ')}: ${val == null ? 'not recorded' : eventValue(val)}`).join(' · ');
+  if (['UPDATED','BID_UPDATED'].includes(code)) {
+    if (!before || !after || typeof before!=='object' || typeof after!=='object') return null;
+    const fields={title:'Title',buyer:'Buyer',location:'Delivery location',quantity:'Quantity',bid_to_ra:'Bid to RA',emd_inr:'EMD',estimated_value_inr:'Bid value'};
+    const normalize=v=>v==null?'':String(v).trim().replace(/\s+/g,' ').toLowerCase();
+    const changed=Object.entries(fields).filter(([key])=>Object.hasOwn(before,key)&&Object.hasOwn(after,key)&&normalize(before[key])!==normalize(after[key])).map(([,label])=>label);
+    if (!changed.length) return null;
+    return {label:'Bid details changed',detail:changed.slice(0,4).join(', ')+(changed.length>4?' and more':''),key:`details:${event.detected_at}:${changed.join(',')}`};
+  }
+  if (code==='STATUS_CHANGED') {
+    const labels={ACTIVE:'Open',CLOSING_SOON:'Closing soon',CLOSED_PENDING_VERIFICATION:'Deadline passed; extension check pending',EXPIRED:'Expired',CANCELLED:'Cancelled',CLOSED:'Closed',AWARDED:'Awarded',PUBLISHED:'Open'};
+    const raw=after && typeof after==='object'?(after.lifecycle_state || after.status):after;
+    const detail=labels[String(raw || '').toUpperCase()];
+    return detail?{label:'Status changed',detail,key:`status:${detail}:${event.detected_at}`}:null;
+  }
+  const visible=['NEW_BID','BID_DOCUMENT_CHANGED','ATC_CHANGED','BOQ_CHANGED','SPECIFICATION_CHANGED','CORRIGENDUM','DOCUMENT_ADDED','DOCUMENT_CHANGED','DOCUMENT_UPDATED','DOCUMENT_REMOVED','CANCELLED','REOPENED','OPENED','EXPIRED'];
+  return visible.includes(code)?{label:changeLabel(code),detail:'',key:`${code}:${event.detected_at}`}:null;
 }
 function timelinePanel(events) {
-  if (!events.length) return '<div class="detail-summary">No recorded activity is available yet. A deadline passing does not confirm the tender’s final status.</div>';
-  return `<ol class="timeline">${events.map(event => `<li><div><strong>${esc(changeLabel(event.event_code || event.event_type))}</strong><time>${esc(stamp(event.detected_at))}</time></div>${event.previous_value != null ? `<p><span>Previous</span> ${esc(eventValue(event.previous_value))}</p>` : ''}${event.new_value != null ? `<p><span>New</span> ${esc(eventValue(event.new_value))}</p>` : ''}${event.summary || event.description || event.reason ? `<p>${esc(event.summary || event.description || event.reason)}</p>` : ''}${officialUrl(event.source_url) ? sourceLink(event.source_url, 'Source ↗', 'timeline-source') : ''}</li>`).join('')}</ol>`;
+  const seen=new Set(), changes=[];
+  for (const event of events) {
+    const change=publicChange(event);
+    if (!change || seen.has(change.key)) continue;
+    seen.add(change.key); changes.push({...change,event});
+    if (changes.length===6) break;
+  }
+  if (!changes.length) return '<p class="section-note">No recent bid changes.</p>';
+  return `<ol class="timeline">${changes.map(({label,detail,event})=>`<li><div><strong>${esc(label)}</strong><time>${esc(stamp(event.detected_at))}</time></div>${detail?`<p>${esc(detail)}</p>`:''}${officialUrl(event.source_url)?sourceLink(event.source_url,'Official source ↗','timeline-source'):''}</li>`).join('')}</ol>`;
 }
 function versionsPanel(versions) {
   versions = versions.map(v => ({...v.snapshot, ...v}));
   if (!versions.length) return '<p class="section-note">No earlier document versions have been recorded.</p>';
-  return `<div class="versions-list">${versions.map(version => `<div><strong>${esc(version.filename || version.title || version.document_key || 'Document')} · v${esc(version.version_no ?? '?')}</strong><span>${esc(stamp(version.detected_at || version.created_at || version.first_detected_at))}${version.content_hash ? ' · Content hash recorded' : ' · Content comparison not recorded'}</span>${officialUrl(version.official_url) ? sourceLink(version.official_url, 'Source URL ↗', 'timeline-source') : ''}</div>`).join('')}</div><p class="section-note">Version records show observed changes. A source URL may now serve the latest file; it is not a stored copy of the earlier document.</p>`;
+  return `<div class="versions-list">${versions.map(version => `<div><strong>${esc(version.filename || version.title || version.document_key || 'Document')} · v${esc(version.version_no ?? '?')}</strong><span>${esc(stamp(version.detected_at || version.created_at || version.first_detected_at))}</span>${officialUrl(version.official_url) ? sourceLink(version.official_url, 'Source URL ↗', 'timeline-source') : ''}</div>`).join('')}</div><p class="section-note">Version records show observed changes. A source URL may now serve the latest file; it is not a stored copy of the earlier document.</p>`;
 }
 async function openBid(id, { updateLocation = true, preserveView = false } = {}) {
   const t = byId(id);
@@ -321,30 +345,32 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   const sameBid=preserveView&&S.selected?.id===id;
   const scrollTop=sameBid?$('bidDialog').scrollTop:0;
   const versionsOpen=sameBid&&!!$('detailVersions')?.closest('details')?.open;
+  const changesOpen=sameBid&&!!$('detailTimeline')?.closest('details')?.open;
   const priorPanels=sameBid?Object.fromEntries(['detailProducts','detailDocuments','detailTimeline','detailVersions'].map(key=>[key,$(key)?.innerHTML||''])):{};
   S.selected = t; S.docs.delete(id);
   const request = ++S.detailRequest;
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
   const isEstimate = valueLabel(t) === 'TenderScope planning estimate';
-  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section"><h3>Bid intelligence snapshot</h3><div class="detail-summary">${esc(t.analysis_summary || 'Analysis pending direct specification review.')}</div></section><section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Products processing…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><h3>Activity timeline</h3><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading recorded changes…</p></div></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel"><strong>Seller updates:</strong> Private buyer messages and seller representations are not connected. Check your GeM seller account for account-specific communications.</p><section class="ai-panel"><h3>Read this bid with ChatGPT</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button></section>`;
+  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Products processing…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Read this bid with ChatGPT</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button></section>`;
   Object.entries(priorPanels).forEach(([key,html])=>{if(html)$(key).innerHTML=html;});
   if(versionsOpen)$('detailVersions').closest('details').open=true;
+  if(changesOpen)$('detailTimeline').closest('details').open=true;
   if (!$('bidDialog').open) $('bidDialog').showModal();
   $('bidDialog').scrollTop=scrollTop;
   if (updateLocation) history.replaceState(null, '', `${location.pathname}${location.search}#bid=${encodeURIComponent(t.bid_number)}`);
   const responses = await Promise.allSettled([
     docs(id),
-    pages(`/tender_events?select=*&tender_id=eq.${encodeURIComponent(id)}&order=detected_at.desc,id.desc`),
-    pages(`/tender_document_versions?select=*&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc`),
+    api(`/tender_events?select=event_code,event_type,detected_at,previous_value,new_value,source_url&tender_id=eq.${encodeURIComponent(id)}&order=detected_at.desc,id.desc&limit=24`),
+    api(`/tender_document_versions?select=version_no,snapshot,detected_at&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc&limit=12`),
     pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
   $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
-  $('detailFeedback').textContent = `Refreshed ${stamp(new Date())}. Bid details and documents update automatically every minute.`;
+  $('detailFeedback').textContent = '';
   [['detailDocuments', docPanel], ['detailTimeline', timelinePanel], ['detailVersions', versionsPanel]].forEach(([target, renderer], index) => {
     const result = responses[index];
-    $(target).innerHTML = result.status === 'fulfilled' ? renderer(result.value) : `<div class="error-card">${['Document records', 'Activity timeline', 'Document version history'][index]} could not be loaded. ${esc(result.reason.message)}. Close and reopen this bid to retry.</div>`;
+    $(target).innerHTML = result.status === 'fulfilled' ? renderer(result.value) : `<div class="error-card">${['Documents', 'Recent changes', 'Document history'][index]} could not load. Close and reopen this bid to retry.</div>`;
   });
 }
 function askBid(id) {
