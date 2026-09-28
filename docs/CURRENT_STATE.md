@@ -1,4 +1,4 @@
-# Current state — 27 September 2026
+# Current state — 28 September 2026
 
 Production: https://tenderscope-healthcare.netlify.app/
 
@@ -12,6 +12,12 @@ At 03:34 UTC (09:04 IST): the public feed returned 694 active opportunities and 
 
 GEM/2026/B/7945801 retains the 1 October 2026, 15:00 IST closing time and its previous deadline. Its PDF, ATC and BOQ/specification URLs were successfully rechecked at 04:20 IST on 27 September by the independent source worker.
 
-Validation: 61 backend tests, 14 frontend tests, production build, retention acceptance, page-wise feed and live extension checks. Full Phase 1 remains open. Current discovery completed 125/2,014 daily lanes, 443/1,914 deep lanes and 73/82 old hourly lanes; retries and document dependencies remain. The daily source budget has paused collection until the next IST day. Do not describe this as exhaustive GeM coverage.
+Validation: 63 backend tests, 14 frontend tests, production build, retention acceptance, page-wise feed and live extension checks. Full Phase 1 remains open. Current discovery completed 125/2,014 daily lanes, 443/1,914 deep lanes and 73/82 old hourly lanes; retries and document dependencies remain. The daily source budget has paused collection until the next IST day. Do not describe this as exhaustive GeM coverage.
 
 WhatsApp follow is available. Automatic publishing and phone sign-in require configured providers; no message delivery is claimed. Detailed backend source, restoration steps and immutable audit records remain in the private recovery checkpoint, outside the public repository.
+
+## 28 September continuation
+
+At 01:05 UTC (06:35 IST), the public feed returned 753 active opportunities and 123 extended bids; database size was 322,120,851 bytes. Today’s independent source processing was running within its daily budget. Source collection resumes automatically after each IST-day budget reset; the complete new daily sweep is scheduled at 01:00 IST. Full coverage remains pending.
+
+The concise activity release is live and was checked on the owner-reported bid. The previous frontend commit is protected by recovery/before-20260927-activity-cleanup. Sync worker v14 also preserves verified PDF conditions and buyer information across overlapping listing observations, and allows a known non-Q2 bid to receive PDF enrichment when that PDF omits its quadrant. New unknown-quadrant bids still require verification.
