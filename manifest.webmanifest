@@ -1,0 +1,14 @@
+{
+  "name": "TenderScope — Healthcare Tender Intelligence",
+  "short_name": "TenderScope",
+  "description": "Healthcare GeM tender intelligence and deadline tracking.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111e32",
+  "theme_color": "#111e32",
+  "orientation": "any",
+  "icons": [
+    {"src": "/assets/tenderscope-logo.png", "sizes": "any", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
