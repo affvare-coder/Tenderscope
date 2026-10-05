@@ -1,12 +1,10 @@
-# Next actions — 28 September 2026
+# Next actions — 6 October 2026
 
-1. Continue the durable source queue within the 360-invocation daily and 450 MB database guards. Do not reset the spent allowance to accelerate the backlog. The daily start is 01:00 IST; old progress resumes after the IST-date reset.
-2. Complete outstanding source lanes and 7,548 document jobs before closing Phase 1. Improve measured throughput while retaining every approved keyword, exact cursor, source retry and Q2/standalone-RA exclusion.
-3. Observe the repaired retention worker. Preserve member download identity through the verified private archive reference. Empty maintenance work must not invoke an Edge Function. Verified retired bids now resolve their obsolete queued document jobs without downloading; keep newer/reopened work. Maintain failed-source retries and archive verification.
-4. Keep both hosting/database plans free. Bundle frontend changes into necessary releases; never deploy for a data-only refresh. Use [skip netlify] [skip ci] on documentation-only commits. Confirm current credits before another production deploy.
-5. Review remaining legacy healthcare false positives and document freshness. Keep the 1 October dental extension and concise activity regression covered.
-6. Keep the WhatsApp follow link. Configure an authorized publisher and phone provider before claiming delivery; do not enable a paid service.
-7. New public tables must explicitly grant only intended privileges and enable appropriate RLS. Existing tables retain their access under the announced October 30 Supabase change.
-8. Proceed to later phases only after Phase 1 acceptance.
-
-Private backend code, email evidence summaries, recovery SQL and archived source data remain outside the public repository.
+1. Drain durable discovery and document work within 360 source invocations per IST day and the 450 MB collection guard. Do not reset the allowance or source cursors to accelerate work.
+2. Observe the next real overlapping 01:00 IST start. It must request fresh active-keyword heads while preserving old backfill. Targeted production head-path and SQL race tests passed; a full future overnight overlap has not yet been observed.
+3. Review 7,394 pending document jobs and remaining healthcare false positives. Resolve obsolete work only with authoritative exclusion/retirement evidence. Complete all pagination and document gates before closing Phase 1.
+4. Observe database/storage trends after the rediscovery compaction repair. Existing older compact records acquire fingerprints when their next full observations are safely archived. Never invent fingerprints from a minimal old record or discard audit history.
+5. Retain verified private archives, member download identity and day-1/day-2 extension checks. Source failures/missing results never permit day-3 removal.
+6. Keep Netlify and Supabase free. Data refresh needs no frontend deployment. Bundle the prepared quick-app cache/build repair with the next necessary frontend release, using the current Git tree. Documentation/source checkpoint commits here intentionally skip Netlify deployment.
+7. Keep WhatsApp follow. Connect an authorized publisher and phone provider before claiming delivery; do not enable a paid provider without authorization.
+8. Maintain least-privilege RPC grants and RLS. Backend source, SQL, full evidence and archives remain private. Phases 2–8 follow full Phase 1 acceptance.

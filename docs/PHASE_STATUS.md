@@ -1,20 +1,16 @@
-# Phase status — 28 September 2026
+# Phase status — 6 October 2026
 
-One complete numbered phase: Phase 0. Full Phase 1 acceptance is still open.
+One complete numbered phase: Phase 0. Full Phase 1 is still open.
 
 | Phase | Status | Evidence |
-|---|---|---|
-| 0 — Recovery | Complete | Prior code, history and rollback points preserved |
-| 1A — Database foundation | Deployed and verified | Unique bids, bounded queue, verified private archives; member-download retention failure repaired |
-| 1B — Discovery | Running within daily budget; coverage pending | Daily 189/2,014; older deep 539/1,914; older hourly 73/82 completed lanes |
-| 1C — Synchronization | Deployed; full-run acceptance pending | Daily 01:00 IST start, resumable work, day-1/day-2 checks, protected day-3 retirement; 7,548 document jobs queued |
-| 1D — Website | Deployed and verified | 40-row pages, logo/follow link, concise changes, verified deadlines and document links |
+| --- | --- | --- |
+| 0 — protection and recovery | Complete | Historical source/checkpoints preserved; verified private archives; guarded retirement; working paged live feed |
+| 1A — database foundation | Deployed | Duplicate-safe ingestion, explicit public RPC, audit/version history and private queues |
+| 1B — discovery and freshness | Deployed, acceptance open | Daily 01:00 IST start; v15 daily heads, preserved backfill, 24-hour document checks; daily coverage 429/1,978 at 04:27 IST |
+| 1C — documents and intelligence inputs | In progress | 7,394 document jobs at 04:26 IST; official parsing and link handling deployed; broad completeness/review pending |
+| 1D — public interface | Deployed | 40-row pages, hourly refresh, concise changes, logo, WhatsApp follow; prepared quick-app cache/build repair awaits bundled release |
 | 2–8 | Deferred | Phase 1 acceptance gate still applies |
 
-28 September, 22:32 IST: production feed HTTP 200, 619 active opportunities, 73 extensions; zero duplicate bid numbers. Netlify and Supabase both Free. No paid plan or production frontend redeploy was used for the backend retention repair.
+Verified public counts at 04:27 IST: 574 active, 102 newly discovered and 90 extended. Two 5 October published bids rechecked officially and visible in production. Both infrastructure plans remain Free. 70 backend and 17 frontend tests passed, plus SQL acceptance and the frontend build.
 
-63 backend tests and three SQL retention/queue acceptance checks passed. Existing 12 member-download history rows were preserved. Latest frontend release remains verified with 14 tests and a successful build.
-
-Remaining gates: full source sweep and document completion, classification/source failure review, provider-backed phone/channel delivery and real-user authentication delivery checks. Do not claim exhaustive coverage, successful notifications or guaranteed outage-free operation.
-
-Evening queue repair completed 592 obsolete document jobs for verified retired bids without downloading, retaining original work and protecting newer/reopened bids. Protected retirements: 312; due old payload cleanup: zero.
+No claim of exhaustive GeM coverage, completed document backlog, notification delivery or outage-free operation is made.
