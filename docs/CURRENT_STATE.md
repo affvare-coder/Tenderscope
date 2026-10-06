@@ -2,19 +2,21 @@
 
 Production: https://tenderscope-healthcare.netlify.app/
 
-## Verified at 21:52 IST
-The live public RPC returned 530 active bids, 1 bid published in the last 24 hours, 73 published in the last 96 hours, 68 extended bids and 67 dental bids. These are rolling publication windows, not discovery timestamps. Extended bids use their dedicated section. Expired bids are excluded from every public view. Counts change as deadlines pass or new records are verified. The feed uses 40-row server-filtered pages; duplicate bid numbers: zero.
+## Verified at 23:02 IST
+The live website returned 529 active opportunities, 73 published within the last 96 hours, 68 extended bids and 66 dental bids. Rolling 24-hour eligible publication count is zero at this observation; this is the verified local feed count, not a claim that GeM published no healthcare bids today. The feed uses 40-row pages; duplicate bid numbers remain zero. Expired bids are excluded from public views.
 
-## Discovery and publication repairs
-The publication rules are deployed. The 96-hour tab and revised 24-hour wording are implemented and tested in frontend source, together with the quick-app freshness repair. Frontend publication is pending Netlify authentication; the latest verified production deployment remains 6ab88f9acbfca067189970d8. Do not claim the new tab is visible until deployment and browser verification complete.
+GEM/2026/B/8029161, DGAFMS photographic equipment for digital dental records, was recovered from saved official listing and verified PDF facts. Publication remains 30 September; closing remains 15 October at 15:00 IST; the actual source check remains 6 October at 05:45 IST. It is visibly searchable on production. It is an older publication recovered today, so it belongs in Dental/All and does not enter the 24/96-hour tabs.
 
-Worker v16 is active. It prioritizes due active-search continuations while preserving their saved page offsets and backoff. Missing live main-bid PDF verification precedes repeated checks of known bids, with fairness for older work retained. Dental and laboratory keywords were expanded without removing the previous bank. Newly recovered records include dental polishing paste, mouth mirrors, composites, cements and implant motors. Recovery does not prove complete coverage.
+## Active backend and prepared frontend
+Worker v17 is active. It recognizes the observed internal-plural dental photographic-equipment wording and excludes explicit Custom Bid for Services contracts under the approved services-only exclusion. An existing eligible bid is excluded for this category only with verified PDF evidence. Two service-only false positives were reviewed; original rows, documents, dates and audit history were retained, with new review versions/events.
 
-Daily discovery remains at 01:00 IST. A read-only daily bid and scraping-health check is enabled for 08:00 IST, beginning 7 October. It checks publication windows, source progress, unresolved verification and resource limits; it does not launch duplicate scraping or reactivate paused legacy tasks.
+Prior v16 pagination priority, missing-main-bid PDF priority, daily heads and 24-hour document checks remain. Rules 2026-10-06.1 preserve the original keyword bank and added dental/laboratory terms. Every unresolved page/cursor remains saved.
 
-## Free-plan limits and remaining acceptance
-Both infrastructure plans remain Free. The live database was 424,021,139 bytes at 21:52 IST, below the 450,000,000-byte collection guard. Today's 360-source-invocation allowance is exhausted; saved work waits for the next allowed cycle. The last verified official source contact was 07:23 IST. Daily source progress was 765/2,046 complete lanes at 21:47 IST; 7,298 document jobs and 10 missing live dental candidates remained. Complete pagination and authoritative category/document verification are still required before claiming comprehensive coverage.
+The 24/96-hour publication RPC rules are live. Tested frontend source includes the 96-hour tab, publication wording, expired-cache filtering and quick-app freshness repair. Source commit 362e3cbc8db0e64ae14991edd7918e83f3fd9899 is preserved. Netlify publication remains blocked by sign-in/publish authorization; the latest verified production deployment is still 6ab88f9acbfca067189970d8. The visible production UI retains earlier wording until that release is published.
 
-Private archives, history, member download identity and day-1/day-2 extension checks remain protected. Day-3 retirement requires successful checks and a verified archive. Failed source requests or absence from a listing do not authorize deletion.
+## Automation and free limits
+Daily ingestion remains at 01:00 IST; the read-only 08:00 IST bid/health check is enabled, beginning 7 October. Old hourly/deep discovery and message senders remain disabled. Daily allowance is 360/360 used, with no reset; last official source contact was 07:23 IST. Progress: 765/2,046 complete lanes; 7,300 document jobs and 10 broad missing-live-dental candidates remain. Full source/document acceptance is open.
 
-One complete numbered phase: Phase 0. Phase 1 remains open. WhatsApp follow is live; channel publishing and phone delivery remain unconfigured. Validation: 72 backend tests, 20 frontend tests, frontend build, and rolled-back SQL acceptance for 24/96-hour windows and queue priority.
+Database size is approximately 424 MB, below the 450 MB collection guard. Both infrastructure plans remain Free. Private archives, member download identity and day-1/day-2 extension checks remain protected. Day-3 retirement requires successful checks and a verified private archive; source failures or missing listings do not authorize deletion.
+
+Phase 0 is the only fully complete numbered phase; Phase 1 remains in progress. Validation: 75 backend tests, 20 frontend tests and build, publication-window SQL acceptance, and rolled-back category-recovery/audit tests followed by production verification. WhatsApp follow is live; publishing remains unconfigured.
