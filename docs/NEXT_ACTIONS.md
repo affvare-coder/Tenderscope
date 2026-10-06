@@ -1,10 +1,10 @@
 # Next actions — 6 October 2026
 
-1. Drain durable discovery and document work within 360 source invocations per IST day and the 450 MB collection guard. Do not reset the allowance or source cursors to accelerate work.
-2. Observe the next real overlapping 01:00 IST start. It must request fresh active-keyword heads while preserving old backfill. Targeted production head-path and SQL race tests passed; a full future overnight overlap has not yet been observed.
-3. Review 7,394 pending document jobs and remaining healthcare false positives. Resolve obsolete work only with authoritative exclusion/retirement evidence. Complete all pagination and document gates before closing Phase 1.
-4. Observe database/storage trends after the rediscovery compaction repair. Existing older compact records acquire fingerprints when their next full observations are safely archived. Never invent fingerprints from a minimal old record or discard audit history.
-5. Retain verified private archives, member download identity and day-1/day-2 extension checks. Source failures/missing results never permit day-3 removal.
-6. Keep Netlify and Supabase free. Data refresh needs no frontend deployment. Bundle the prepared quick-app cache/build repair with the next necessary frontend release, using the current Git tree. Documentation/source checkpoint commits here intentionally skip Netlify deployment.
-7. Keep WhatsApp follow. Connect an authorized publisher and phone provider before claiming delivery; do not enable a paid provider without authorization.
-8. Maintain least-privilege RPC grants and RLS. Backend source, SQL, full evidence and archives remain private. Phases 2–8 follow full Phase 1 acceptance.
+1. Publish the tested frontend to the existing Netlify site after sign-in, preserving its proxy configuration and Free plan. Verify the 24-hour and 96-hour tabs, Extended section, paging and quick-app freshness on production.
+2. Drain saved discovery and verification work within 360 source invocations per IST day and the 450 MB collection guard. Never reset the allowance or discard source cursors to accelerate work.
+3. Observe the next 01:00 IST daily start and 08:00 IST read-only check. The daily start must preserve old backfill and request fresh keyword heads when runs overlap.
+4. Resolve remaining live dental candidates and the document backlog from official source/category evidence. Review service-only false positives and the plural photographic-equipment keyword variant. Full pagination and verification are required before closing Phase 1 or claiming no missed bids.
+5. Retain verified private archives, member download identity and day-1/day-2 extension checks. Failed or missing source responses never permit retirement.
+6. Watch storage and queue trends under the current free limits. Keep failed work resumable rather than introducing another database or paid service without an established need.
+7. Keep WhatsApp follow. Configure an authorized publisher/provider before claiming channel or phone delivery. Do not reactivate paused legacy automations.
+8. Keep backend code, SQL, full contract and private evidence outside public Git. Complete Phase 1 acceptance before phases 2–8.

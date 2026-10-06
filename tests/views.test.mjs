@@ -17,3 +17,24 @@ test('the reported extended bid remains in the Extended view with its current fu
  const t={...bid,location_class:'NON_DELHI',is_extended:true,extension_count:1,previous_deadline:'2026-09-23T09:30:00Z',deadline:new Date(Date.now()+9*86400000).toISOString(),lifecycle_state:'ACTIVE'};
  assert.equal(matchesView(t,'extended'),true);assert.equal(matchesView({...t,is_extended:false,extension_count:0},'extended'),false);
 });
+
+test('new view follows publication time rather than discovery time',()=>{
+ const t={...bid,location_class:'NON_DELHI',first_seen_at:new Date().toISOString(),published_at:new Date(Date.now()-2*86400000).toISOString()};
+ assert.equal(matchesView(t,'new'),false);
+ assert.equal(matchesView({...t,published_at:new Date(Date.now()-3600000).toISOString(),first_seen_at:'2020-01-01'},'new'),true);
+ for(const published_at of [null,'invalid',new Date(Date.now()+3600000).toISOString()])assert.equal(matchesView({...t,published_at},'new'),false);
+});
+test('extensions stay out of new and expired bids stay out of every public view',()=>{
+ const t={...bid,location_class:'NON_DELHI',published_at:new Date().toISOString(),is_extended:true};
+ assert.equal(matchesView(t,'new'),false);assert.equal(matchesView(t,'extended'),true);
+ for(const view of ['active','new','extended','dental','medical','watch'])assert.equal(matchesView({...t,deadline:'2020-01-01'},view),false);
+});
+
+
+test('96-hour view includes the full four-day publication window and excludes rediscovered old bids',()=>{
+ const t={...bid,location_class:'NON_DELHI',first_seen_at:new Date().toISOString(),published_at:new Date(Date.now()-72*3600000).toISOString()};
+ assert.equal(matchesView(t,'recent96'),true);assert.equal(matchesView(t,'new'),false);
+ for(const published_at of [null,'invalid',new Date(Date.now()-97*3600000).toISOString(),new Date(Date.now()+3600000).toISOString()])assert.equal(matchesView({...t,published_at},'recent96'),false);
+ assert.equal(matchesView({...t,is_extended:true},'recent96'),false);
+ assert.equal(matchesView({...t,deadline:'2020-01-01'},'recent96'),false);
+});

@@ -11,7 +11,8 @@ const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit'
 const esc = (v = '') => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const VIEW = {
   active: ['All opportunities', 'Healthcare bids from official GeM sources. Delhi-only bids are in Delhi healthcare. Choose a bid to explore its documents and recorded changes.'],
-  new: ['Newly discovered', 'Open healthcare bids first detected by TenderScope within the last 24 hours.'],
+  new: ['Newly discovered', 'Healthcare bids published in the last 24 hours. Deadline extensions are in Extended opportunities.'],
+  recent96: ['Published in the last 96 hours', 'Open healthcare bids published in the past four days. Deadline extensions are in Extended opportunities.'],
   updated: ['Updated opportunities', 'Open bids with a recorded change after their first publication.'],
   extended: ['Extended opportunities', 'Open bids with a verified deadline extension.'],
   closing: ['Closing soon', 'Open bids with a verified closing time within the next 72 hours.'],
@@ -40,7 +41,8 @@ const stamp = v => date(v) ? `${F.format(date(v))} IST` : 'Not recorded';
 const today = () => DAY.format(new Date());
 const isToday = v => !!date(v) && DAY.format(date(v)) === today();
 const firstSeen = t => t.first_seen_at || t.first_detected_at || t.created_at;
-const recentlyDiscovered = t => time(firstSeen(t)) !== null && time(firstSeen(t)) <= Date.now() && Date.now() - time(firstSeen(t)) < 86400000;
+const recentlyPublished = (t,hours) => time(t.published_at) !== null && time(t.published_at) <= Date.now() && Date.now() - time(t.published_at) < hours*3600000 && !extended(t);
+const recentlyDiscovered = t => recentlyPublished(t,24);
 const list = v => Array.isArray(v) ? v : (v ? [String(v)] : []);
 const exactDeadline = t => t.closing_time_verified !== false && t.deadline_precision !== 'date_only' && !!date(t.deadline);
 function deadlineTime(t) {
@@ -79,10 +81,11 @@ function matchesView(t, view) {
   if (view === 'delhi') return active(t) && (t.location_class === 'DELHI' || (t.location_class === 'MULTI_LOCATION' && t.location_includes_delhi));
   if (view === 'multi') return active(t) && t.location_class === 'MULTI_LOCATION';
   if (t.location_class === 'DELHI') return false;
-  if (view === 'watch') return lifecycle(t) === 'CLOSED_PENDING_VERIFICATION';
+  if (view === 'watch') return false;
   if (!active(t)) return false;
   const text = haystack(t);
   if (view === 'new') return recentlyDiscovered(t);
+  if (view === 'recent96') return recentlyPublished(t,96);
   if (view === 'updated') return updated(t);
   if (view === 'extended') return extended(t);
   if (view === 'closing') return exactDeadline(t) && hrs(t) !== null && hrs(t) > 0 && hrs(t) <= 72;
@@ -128,13 +131,13 @@ async function pages(path, size = 500) {
   }
   return rows;
 }
-const SNAPSHOT_KEY = 'tenderscope.public-page.v2';
+const SNAPSHOT_KEY = 'tenderscope.public-page.v3';
 function feedParams() {
   return new URLSearchParams({p_view:S.view,p_search:$('searchInput').value.trim(),p_sort:S.sort,p_offset:String(S.pageOffset),p_limit:String(S.pageSize),p_filters:JSON.stringify({category:$('categoryFilter').value,priority:$('priorityFilter').value,urgency:$('urgencyFilter').value,defence:$('defenceFilter').value,time:$('timeFilter').value})});
 }
 function applyFeed(data, key, savedAt) {
   if (!data || !Array.isArray(data.rows) || !Number.isFinite(data.total) || !data.counts || data.rows.length > S.pageSize) throw new Error('Unexpected bid response');
-  S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && eligibleRecord(t)).map(t => [t.id,t])).values()];
+  S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && matchesView(t,S.view)).map(t => [t.id,t])).values()];
   S.filtered = S.all; S.total = data.total; S.counts = data.counts; S.categories = data.categories || [];
   S.pageKey = key; S.loaded = true; S.lastLoadedAt = savedAt;
   categories(); kpis(); render();
@@ -273,7 +276,7 @@ function render() {
     $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('previousPageBtn').hidden = true; $('pageSummary').textContent = '';
     return;
   }
-  const sortLabel = { deadline: 'closing date first', newest: 'newest discovered first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
+  const sortLabel = { deadline: 'closing date first', newest: 'newest published first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
   $('resultCount').textContent = `${S.total.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.total === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
   $('tenderList').innerHTML = S.filtered.map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
   $('loadMoreBtn').hidden = S.pageOffset + S.all.length >= S.total;
@@ -417,7 +420,7 @@ async function handleAction(event) {
 }
 function selectView(view) {
   S.view = VIEW[view] ? view : 'active';
-  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : S.view === 'new' ? 'newest' : 'deadline';
+  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['new','recent96'].includes(S.view) ? 'newest' : 'deadline';
   $('sortOrder').value = S.sort;
   kpis(); filter(); closeSidebar();
 }

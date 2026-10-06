@@ -6,7 +6,7 @@ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function setup(saved=null){
  const nodes=new Map();
  const get=id=>{if(['screenRefresh','headerStatus','exportBtn','syncStatus'].includes(id))return null;if(!nodes.has(id))nodes.set(id,{hidden:false,disabled:false,textContent:'',innerHTML:'',value:'',open:false,scrollIntoView(){}});return nodes.get(id);};
- const storage=new Map(saved ? [['tenderscope.public-page.v2',JSON.stringify(saved)]] : []);
+ const storage=new Map(saved ? [['tenderscope.public-page.v3',JSON.stringify(saved)]] : []);
  const ctx=vm.createContext({Intl,URL,URLSearchParams,Date,Map,console,setTimeout,clearTimeout,localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},document:{getElementById:get,querySelectorAll:()=>[]}});
  vm.runInContext(source.slice(0,source.indexOf('function sourceLink('))+source.slice(source.indexOf('function render()'),source.indexOf('async function docs('))+`
  card=t=>t.bid_number;loadProductSummaries=()=>{};openFromLocation=async()=>{};
