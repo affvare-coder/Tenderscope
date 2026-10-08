@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package:drop": "npm run build && python3 scripts/package-drop.py",
     "test": "node --check app.js && node --test tests/*.test.mjs",
     "check": "node --check app.js"
   },

@@ -1,14 +1,18 @@
-# Phase status — 7 October 2026
+# Phase status — 8 October 2026
 
-One complete numbered phase: Phase 0. Full Phase 1 remains open.
+Phase 0 is complete. Full Phase 1 acceptance remains open.
 
 | Phase | Status | Evidence |
 | --- | --- | --- |
-| 0 — protection and recovery | Complete | Historical checkpoints and private verified archives; working paged production feed |
-| 1A — database foundation | Deployed | Duplicate-safe ingestion and 40-row public RPC; zero duplicate bid numbers at 06:36 IST |
-| 1B — discovery and freshness | Deployed, acceptance open | Daily 01:00 IST; active v17; 7 October head replay progressing, 282 head pages and 802/2,046 complete lanes; 08:00 check enabled |
-| 1C — documents and intelligence inputs | In progress | 7,276 queued plus 6 partial document jobs; authoritative verification continues within budget |
-| 1D — public interface | Release prepared | Production feed loads; tested 24/96-hour tabs and quick-app repair await Netlify sign-in and publication |
+| 0 — protection and recovery | Complete | Historical checkpoints, private verified archives and guarded retirement preserved |
+| 1A — database foundation | Deployed | Paged duplicate-safe feed; zero duplicate bid numbers at 08:05 IST |
+| 1B — discovery and freshness | Deployed, acceptance open | Daily 01:00 IST; worker v18; 620 fresh heads and saved 781/2,046 lanes; allowance 360/360 |
+| 1C — documents and intelligence inputs | In progress | 7,241 queued and 6 partial document jobs; 555 unknown live locations; location backfill not accepted |
+| 1D — public interface | Published; member-download acceptance open | Netlify 6ac70254143c294f4992bd72; live 24/96-hour, Extended, Delhi and paging checks passed |
 | 2–8 | Deferred | Phase 1 acceptance gate remains |
 
-At 06:36 IST: 580 active, 16 published in the rolling 24-hour window, 88 within 96 hours, 95 extended and 69 dental. Production shows the new 24-hour results, while its wording remains old until the prepared frontend is published. Both plans remain Free. Existing 75 backend and 20 frontend tests/build pass; today's live SQL checks find no invalid publication-window rows or duplicate bid numbers.
+At 08:05 IST: 584 active, 24 rolling-24-hour publications, 86 within
+96 hours, 103 extended, 68 dental and 3 Delhi entries. The tested SQL pages
+contain no invalid publication-window or extension rows. Free guards and
+history remain protected. No exhaustive coverage or alert delivery claim
+is made; WhatsApp sender authorization is pending.

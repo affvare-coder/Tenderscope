@@ -1,22 +1,53 @@
-# Current state — 7 October 2026
+# Current state — 8 October 2026
 
 Production: https://tenderscope-healthcare.netlify.app/
 
-## Verified at 06:36 IST
-The production website visibly loaded 580 active opportunities and 16 eligible publications from the rolling last 24 hours. The backend returned 88 published within 96 hours, 95 extended bids and 69 dental bids. Duplicate bid numbers remain zero. Checks found zero expired, extended or out-of-window rows in the tested publication pages, and zero unextended rows in the tested Extended page. Public expired/watch count is zero. The 40-row page cap remains.
+## Published frontend and live checks
+Netlify production deployment 6ac70254143c294f4992bd72 is published.
+The live site now exposes Published · 24 hours and Published · 96 hours.
+At 08:05 IST the feed returned 584 active bids, 24 within the rolling
+24-hour publication window, 86 within 96 hours, 103 extended bids,
+68 dental bids and 3 Delhi entries. These are feed counts at that time,
+not an exhaustive count of all GeM publications.
 
-The prior 23:02 IST observation was 529 active opportunities. The new daily cycle is updating data; this increase is a net feed change, not a claim that every additional active bid was newly published today. Full coverage is not yet complete.
+Live browser checks covered both publication tabs, two disjoint 40-row
+96-hour pages, Extended (40 displayed rows all marked extended), and
+Delhi (3 entries, including mixed-location bids). SQL checks found zero
+invalid rows in the tested publication/Extended pages, zero expired/watch
+rows and zero duplicate bid numbers. The 40-row page cap remains.
+An official bid link and its explicit unverified document state were
+checked; member sign-in and a completed PDF download were not exercised.
 
-## Active backend and prepared frontend
-Worker v17 is active. Dental photographic-equipment wording and verified services-only classification repairs remain live. Recovered GEM/2026/B/8029161 remains an older publication and is kept out of the 24/96-hour publication tabs. Existing bid-to-RA goods are retained; standalone RA and Q2 remain excluded.
+The release preserves functional commit 362e3cbc8db0e64ae14991edd7918e83f3fd9899,
+API proxy redirects and headers. The static upload package disables a second
+build and serves its built files at the root. Public files contain no private
+backend source or private recovery material.
 
-The 24/96-hour publication RPC rules are live. Tested frontend source includes the 96-hour tab, correct publication wording, expired-cache filtering and quick-app freshness repair. Functional source commit 362e3cbc8db0e64ae14991edd7918e83f3fd9899 remains protected. Netlify publication remains blocked by account sign-in; the current deployment is still 6ab88f9acbfca067189970d8. A secure sign-in attempt timed out and fresh target-page verification still showed Log in. The current visible UI consequently retains first-seen wording and does not yet expose the 96-hour tab.
+## Backend and remaining acceptance
+Worker v18 and the verified PDF consignee-location writer are deployed.
+Previous validation passed 79 backend and 20 frontend tests, build and SQL
+acceptance. Today's actual production location backfill is not complete:
+555 live locations remain UNKNOWN and 40 prioritized parser-upgrade jobs
+are still queued. There are 7,241 queued and 6 partial document jobs.
 
-## Automation and free limits
-The 7 October daily head replay is active while old pagination remains saved. At 06:36 IST the ongoing job had 282 daily head pages, 802/2,046 complete lanes and zero recorded coverage errors. Job statistics span its ongoing recovery run; they are not all today's publications. There are 7,276 queued and 6 partial document jobs.
+The ongoing discovery job reports 620 fresh head pages for 8 October and
+781/2,046 saved completed lanes, with zero recorded coverage errors.
+Cumulative job statistics span the recovery run; they are not all today's
+newly published bids. Full source/document/location acceptance remains open.
 
-Daily ingestion remains at 01:00 IST. The read-only 08:00 IST check is enabled. Old hourly/deep discovery and message senders remain disabled. The daily source allowance is 317/360 used with no manual reset. Database size is 425,790,611 bytes, below the 450,000,000-byte collection guard. Private verified archives total about 46.3 MB. Both infrastructure plans remain Free.
+## Schedule, limits and protected history
+Daily ingestion remains at 01:00 IST; the read-only 08:00 IST check remains
+enabled. The bounded queue pump is enabled; legacy hourly/deep discovery
+and message senders remain disabled. Today's source allowance is 360/360.
+No allowance reset or unbounded wake was performed. Database size at
+08:05 IST is 428,960,915 bytes, below the 450,000,000-byte guard.
 
-Private archives, member download identity and day-1/day-2 extension checks remain protected. Day-3 retirement requires successful checks and a verified private archive; failures or missing source listings do not authorize deletion. WhatsApp follow is live; message publishing is unconfigured.
+The infrastructure remains on Free plans. Verified private archives,
+member download identity, original dates, source histories and saved
+cursors remain protected. Day-1/day-2 checks and a verified private archive
+remain prerequisites for guarded retirement.
 
-Phase 0 is the only fully complete numbered phase. Phase 1 source/document acceptance and frontend publication remain open. Existing validation remains 75 backend tests, 20 frontend tests, build and SQL acceptance; today's live publication-window and duplicate checks pass. No exhaustive-coverage, message-delivery or outage-free guarantee is made.
+WhatsApp follow is visible. No authorized WhatsApp business sender
+connection was found; phone alerts and channel publishing are unconfigured.
+No alert was sent. Phase 0 remains the only fully complete numbered phase.
+Phase 1 acceptance and phases 2–8 remain open.
