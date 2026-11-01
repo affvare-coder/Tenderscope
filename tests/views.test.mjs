@@ -6,8 +6,21 @@ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const context=vm.createContext({Intl,URL,Date,Map,console});
 vm.runInContext(source.slice(0,source.indexOf('async function load('))+source.slice(source.indexOf('function sourceLink('),source.indexOf('function card(t)'))+'\nthis.f={matchesView,productsPanel,productPreview};',context);
 const {matchesView,productsPanel}=context.f;
+test('missing product extraction is visible as processing and never fabricates item names',()=>{
+ assert.match(context.f.productPreview({id:'unprocessed'}),/Products processing/);
+ assert.match(productsPanel([],[]),/Products processing/);
+});
 const bid={id:'1',bid_number:'GEM/2026/B/123',deadline:new Date(Date.now()+86400000).toISOString(),status:'published',location_class:'DELHI'};
 test('Delhi stays out of default feeds and is available in Delhi view',()=>{assert.equal(matchesView(bid,'active'),false);assert.equal(matchesView(bid,'delhi'),true);});
+test('an exact active bid-number search finds Delhi without changing default segregation',()=>{
+ const delhi={...bid,bid_number:'GEM/2026/B/8120282'};
+ for(const search of ['8120282','GEM/2026/B/8120282',' gem/2026/b/8120282 '])assert.equal(matchesView(delhi,'active',search),true);
+ for(const search of ['', 'dental','812028','9999999'])assert.equal(matchesView(delhi,'active',search),false);
+ assert.equal(matchesView({...delhi,deadline:'2020-01-01'},'active','8120282'),false);
+ assert.equal(matchesView({...delhi,status:'excluded'},'active','8120282'),false);
+ assert.equal(matchesView({...delhi,bid_number:'GEM/2026/R/8120282'},'active','8120282'),false);
+ assert.equal(matchesView(delhi,'new','8120282'),false);
+});
 test('mixed Delhi bid appears in both dedicated views under the same ID',()=>{const mixed={...bid,location_class:'MULTI_LOCATION',location_includes_delhi:true};assert.equal(matchesView(mixed,'delhi'),true);assert.equal(matchesView(mixed,'multi'),true);assert.equal(matchesView(mixed,'active'),true);});
 test('unknown location remains discoverable and closed Delhi bids are not shown as active',()=>{assert.equal(matchesView({...bid,location_class:'UNKNOWN'},'active'),true);assert.equal(matchesView({...bid,deadline:'2020-01-01'},'delhi'),false);});
 test('product panel shows only rows matching the current verified source hash',()=>{const item={name:'<script>unsafe</script>',source_url:'https://mkp.gem.gov.in/uploaded_documents/boq.csv',source_hash:'v1'};assert.match(productsPanel([item],[{official_url:item.source_url,availability:'available',content_hash:'v2'}]),/Read the official BOQ/);const html=productsPanel([item],[{official_url:item.source_url,availability:'available',content_hash:'v1'}]);assert(html.includes('&lt;script&gt;'));assert(!html.includes('<script>'));assert(html.includes('Not specified'));});

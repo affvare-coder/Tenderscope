@@ -19,3 +19,7 @@ tests/
 !tests/
 tests/*
 !tests/views.test.mjs
+
+!tests/*.test.mjs
+.openai/
+supabase.js

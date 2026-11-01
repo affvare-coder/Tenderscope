@@ -1,53 +1,19 @@
-# Current state — 8 October 2026
+# Current state — 1 November 2026
 
-Production: https://tenderscope-healthcare.netlify.app/
+Production remains https://tenderscope-healthcare.netlify.app/. Frontend publication is pending authenticated Netlify dashboard access; the dashboard currently shows Log in. Do not report the document studio as live until its matching deployment is verified.
 
-## Published frontend and live checks
-Netlify production deployment 6ac70254143c294f4992bd72 is published.
-The live site now exposes Published · 24 hours and Published · 96 hours.
-At 08:05 IST the feed returned 584 active bids, 24 within the rolling
-24-hour publication window, 86 within 96 hours, 103 extended bids,
-68 dental bids and 3 Delhi entries. These are feed counts at that time,
-not an exhaustive count of all GeM publications.
+## Live repairs
 
-Live browser checks covered both publication tabs, two disjoint 40-row
-96-hour pages, Extended (40 displayed rows all marked extended), and
-Delhi (3 entries, including mixed-location bids). SQL checks found zero
-invalid rows in the tested publication/Extended pages, zero expired/watch
-rows and zero duplicate bid numbers. The 40-row page cap remains.
-An official bid link and its explicit unverified document state were
-checked; member sign-in and a completed PDF download were not exercised.
+The 485,000,000-byte guard paused ingestion at 486,788,243 bytes. VACUUM FULL ANALYZE of public.sync_candidates recovered about 23 MB without removing records. The ordinary bounded queue resumed; quota and budget limits were retained. Latest observed database size was about 465 MB; headroom is limited and this is not a permanent capacity solution. Five publications within the last 24 hours were recovered by 11:52 IST, including GEM/2026/B/8208535. Coverage is still incomplete; the document queue is approximately 9,157 jobs. Thirty-eight existing open-bid BOQ jobs were prioritised without duplicating jobs or resetting budgets.
 
-The release preserves functional commit 362e3cbc8db0e64ae14991edd7918e83f3fd9899,
-API proxy redirects and headers. The static upload package disables a second
-build and serves its built files at the root. Public files contain no private
-backend source or private recovery material.
+The deployed worker update adds an explicit GeM Item Name/Quantity CSV variant and conservative positional PDF table parsing with source page keys. Current-hash verification remains mandatory. Scans, unsupported table layouts and wrapped ambiguous rows are not represented as verified product lists. The historical parser only extracted one CSV format; only four of 487 open stored bids initially had product rows. Later fixture or unit acceptance is not proof that all production PDFs have been parsed.
 
-## Backend and remaining acceptance
-Worker v18 and the verified PDF consignee-location writer are deployed.
-Previous validation passed 79 backend and 20 frontend tests, build and SQL
-acceptance. Today's actual production location backfill is not complete:
-555 live locations remain UNKNOWN and 40 prioritized parser-upgrade jobs
-are still queued. There are 7,241 queued and 6 partial document jobs.
+## Prepared frontend
 
-The ongoing discovery job reports 620 fresh head pages for 8 October and
-781/2,046 saved completed lanes, with zero recorded coverage errors.
-Cumulative job statistics span the recovery run; they are not all today's
-newly published bids. Full source/document/location acceptance remains open.
+Reuses the pending 24 October commercial frontend rather than discarding its account/draft safeguards. Ask AI opens bid intelligence and a document studio. Item-wise offers use verified source rows, editable OEM/product/pack, response and evidence. Responses start NEEDS REVIEW. Deterministic DOCX and PDF exports include participant letterhead/signature/stamp images. Profile text is private under per-account RLS; images, ATCs and draft offers remain in memory and clear on account change. Source document changes invalidate offers and mappings.
 
-## Schedule, limits and protected history
-Daily ingestion remains at 01:00 IST; the read-only 08:00 IST check remains
-enabled. The bounded queue pump is enabled; legacy hourly/deep discovery
-and message senders remain disabled. Today's source allowance is 360/360.
-No allowance reset or unbounded wake was performed. Database size at
-08:05 IST is 428,960,915 bytes, below the 450,000,000-byte guard.
+ATC PDFs retain original page geometry/content; standard text fields receive conservative participant bindings. Flat PDFs use visual point-and-fill mapping and explicit annexure-page selection. A filled preview and review confirmation precede download. This is not autonomous exact reconstruction of every scanned ATC, and scanned annexures still require mapping. No LLM provider has been wired into TenderScope; source analysis still opens ChatGPT with official links. Automatic OEM choices, automatic Yes claims, a secure persisted image vault, multi-company team roles and ZIP packs remain open.
 
-The infrastructure remains on Free plans. Verified private archives,
-member download identity, original dates, source histories and saved
-cursors remain protected. Day-1/day-2 checks and a verified private archive
-remain prerequisites for guarded retirement.
+## Verification
 
-WhatsApp follow is visible. No authorized WhatsApp business sender
-connection was found; phone alerts and channel publishing are unconfigured.
-No alert was sent. Phase 0 remains the only fully complete numbered phase.
-Phase 1 acceptance and phases 2–8 remain open.
+124 backend tests and 43 frontend tests pass, including deterministic document exports, page preservation, stale-source exclusion, missing values, overflow, and PDF field flattening. Build and public ZIP validation pass. Preview UI was checked against the live public database: recovered new bid, missing-products state, studio tabs and a 93-row parsed BOQ. Full signed-in browser export and two-account user journeys have not yet been completed. Database RLS blocked cross-account update in a rolled-back acceptance check. No subscriber alert or WhatsApp message was sent.

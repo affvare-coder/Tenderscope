@@ -1,5 +1,5 @@
-const CACHE="tenderscope-app-v2";
-const APP_SHELL=["/","/index.html","/styles.css","/app.js","/manifest.webmanifest","/assets/tenderscope-logo.png"];
+const CACHE="tenderscope-app-v20261101";
+const APP_SHELL=["/","/index.html","/styles.css","/app.js","/commercial.js","/commercial-api.mjs","/commercial-drafts.mjs","/manifest.webmanifest","/assets/tenderscope-logo.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(APP_SHELL)));self.skipWaiting();});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("tenderscope-app-")&&k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener("fetch",e=>{

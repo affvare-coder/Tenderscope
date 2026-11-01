@@ -22,5 +22,5 @@ test('static app assets use current network bytes and fall back only when offlin
  const offline=harness({offline:true}),fallback=offline.event(new Request('https://tenderscope-healthcare.netlify.app/app.js'));offline.handlers.fetch(fallback);assert.equal(await (await fallback.response()).text(),'old shell');assert.equal(offline.writes.length,0);
 });
 test('activation clears old TenderScope caches without removing other stored apps',async()=>{
- const h=harness(),e=h.event(null);h.handlers.activate(e);await e.done();assert.deepEqual(h.deleted,['tenderscope-app-v1']);
+ const h=harness(),e=h.event(null);h.handlers.activate(e);await e.done();assert.deepEqual(h.deleted,['tenderscope-app-v1','tenderscope-app-v2']);
 });

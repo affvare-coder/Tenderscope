@@ -16,7 +16,7 @@ original, static = tomllib.loads(source), tomllib.loads(config)
 assert static["build"]["command"] == "" and static["build"]["publish"] == "."
 assert original["headers"] == static["headers"] and original["redirects"] == static["redirects"]
 files = sorted(p for p in (root / "dist").rglob("*") if p.is_file())
-required = {"index.html", "app.js", "styles.css", "supabase.js", "sw.js", "manifest.webmanifest"}
+required = {"index.html", "app.js", "styles.css", "supabase.js", "sw.js", "manifest.webmanifest", "document-studio.js", "commercial.js", "commercial-api.mjs", "commercial-drafts.mjs"}
 names = {p.relative_to(root / "dist").as_posix() for p in files}
 assert required <= names
 assert all(name in required or name.startswith("assets/") for name in names)

@@ -1,10 +1,10 @@
 'use strict';
 const PROJECT_URL = 'https://agdmlgbfxoqhztiormij.supabase.co';
-const API_URL = '/api/public';
+const API_URL = typeof location!=='undefined' && ['terminal.local','localhost'].includes(location.hostname) ? PROJECT_URL+'/rest/v1' : '/api/public';
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'deadline' };
+const S = { all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'newest' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
@@ -76,8 +76,11 @@ const eligibleRecord = t => !/\/R\//i.test(t.bid_number || '') && String(t.statu
 const extended = t => t.is_extended === true || Number(t.extension_count) > 0;
 const eventCode = t => String(t.last_event_code || t.last_event_type || '').toUpperCase();
 const updated = t => !!eventCode(t) && !['NEW_BID', 'NEW', 'PUBLISHED', 'DISCOVERED', 'INITIAL_IMPORT', 'IMPORTED', 'UNCHANGED', 'CHECKED'].includes(eventCode(t));
-function matchesView(t, view) {
+function matchesView(t, view, search = '') {
   if (!eligibleRecord(t)) return false;
+  const exact = String(search).trim().toUpperCase();
+  if (view === 'active' && active(t) && /^(?:\d{6,9}|GEM\/\d{4}\/B\/\d+)$/.test(exact)
+      && (exact === t.bid_number || exact === String(t.bid_number || '').split('/')[3])) return true;
   if (view === 'delhi') return active(t) && (t.location_class === 'DELHI' || (t.location_class === 'MULTI_LOCATION' && t.location_includes_delhi));
   if (view === 'multi') return active(t) && t.location_class === 'MULTI_LOCATION';
   if (t.location_class === 'DELHI') return false;
@@ -112,7 +115,7 @@ async function api(path) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const response = await fetch(API_URL + path, { cache: 'no-store', signal: controller.signal });
+    const response = await fetch(API_URL + path, { cache: 'no-store', headers:API_URL.startsWith('https:')?H:{}, signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
     return await response.json();
   } catch (error) {
@@ -137,7 +140,8 @@ function feedParams() {
 }
 function applyFeed(data, key, savedAt) {
   if (!data || !Array.isArray(data.rows) || !Number.isFinite(data.total) || !data.counts || data.rows.length > S.pageSize) throw new Error('Unexpected bid response');
-  S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && matchesView(t,S.view)).map(t => [t.id,t])).values()];
+  const search = new URLSearchParams(key).get('p_search') || '';
+  S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && matchesView(t,S.view,search)).map(t => [t.id,t])).values()];
   S.filtered = S.all; S.total = data.total; S.counts = data.counts; S.categories = data.categories || [];
   S.pageKey = key; S.loaded = true; S.lastLoadedAt = savedAt;
   categories(); kpis(); render();
@@ -247,7 +251,7 @@ async function loadProductSummaries() {
 }
 function productPreview(t) {
   const summary=S.products.get(t.id);
-  if(!summary?.item_names?.length)return '';
+  if(!summary?.item_names?.length)return '<div class="product-preview"><strong>Products required</strong><p class="section-note">Products processing</p></div>';
   const names=summary.item_names.slice(0,5),remaining=Math.max(0,Number(summary.item_count)-names.length);
   return `<div class="product-preview"><strong>Products required</strong><ul>${names.map(name=>`<li>${esc(name)}</li>`).join('')}</ul>${remaining?`<button class="text-btn" data-action="detail" data-id="${esc(t.id)}">+${remaining} more</button>`:''}<small>Official BOQ · ${Number(summary.item_count)} item rows</small></div>`;
 }
@@ -257,7 +261,7 @@ function locationPanel(t) {
 }
 function productsPanel(items,documents=[]) {
  const current=items.filter(item=>documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
- if(!current.length)return '<p class="section-note">Read the official BOQ below for item quantities, packs and specifications.</p>';
+ if(!current.length)return '<p class="section-note">Products processing. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
  return `<p class="section-note">OFFICIAL FACT · ${current.length} BOQ rows. Packs and PVMS/NIV remain unverified where the source has no dedicated field. Read the buyer specification for packaging details.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong><small>PVMS: ${esc(item.pvms||'Not specified')} · NIV: ${esc(item.niv||'Not specified')}</small></td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td>${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
 }
@@ -266,11 +270,12 @@ function card(t) {
   const countdown = state === 'CLOSED_PENDING_VERIFICATION' ? 'Verification pending' : !active(t) ? lifecycleLabel(t) : !verified ? 'Time pending' : h === null ? 'Date pending' : h < 1 ? 'Less than 1h left' : h < 24 ? `${Math.ceil(h)}h remaining` : `${Math.ceil(h / 24)} days remaining`;
   const urgent = active(t) && verified && h !== null && h <= 72;
   const category = t.subcategory || t.category || 'Healthcare';
-  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Published · 24 hours</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}${productPreview(t)}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${t.estimated_value_inr == null ? 'not-published' : ''}">${money(t.estimated_value_inr)}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Open ChatGPT with this bid’s details">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta"><span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
+  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Published · 24 hours</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}${productPreview(t)}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${t.estimated_value_inr == null ? 'not-published' : ''}">${money(t.estimated_value_inr)}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button type="button" class="btn ghost" data-save-bid="${esc(t.bid_number)}">Save bid</button><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Bid intelligence, compliance sheets and ATC annexures">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta"><span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
 }
 function render() {
   $('viewHeading').textContent = VIEW[S.view][0];
   $('viewDescription').textContent = VIEW[S.view][1];
+  $('feedFreshness').textContent = S.lastLoadedAt ? `Register loaded ${stamp(S.lastLoadedAt)} · checks for updates every 5 minutes` : 'Checking for bid updates…';
   if (!S.loaded) {
     $('resultCount').textContent = S.loading ? 'Loading the healthcare register…' : 'Bid data unavailable';
     $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('previousPageBtn').hidden = true; $('pageSummary').textContent = '';
@@ -355,7 +360,7 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
   const isEstimate = valueLabel(t) === 'TenderScope planning estimate';
-  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Products processing…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Read this bid with ChatGPT</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button></section>`;
+  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn primary" data-save-bid="${esc(t.bid_number)}">Save bid</button><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Official GeM source ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Products processing…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Ask AI &amp; prepare bid documents</h3><p>Open ChatGPT with this bid’s details and recorded official links. Ask it to read the sources before assessing compliance.</p><button class="btn" data-action="ai" data-id="${esc(t.id)}">✦ Ask about this bid</button><button class="btn primary" data-action="prepare-docs" data-id="${esc(t.id)}">Prepare compliance sheet</button><button class="btn" data-action="prepare-annexures" data-id="${esc(t.id)}">ATC · Ask AI / annexures</button></section>`;
   Object.entries(priorPanels).forEach(([key,html])=>{if(html)$(key).innerHTML=html;});
   if(versionsOpen)$('detailVersions').closest('details').open=true;
   if(changesOpen)$('detailTimeline').closest('details').open=true;
@@ -384,6 +389,18 @@ function askBid(id) {
   const text = `First provide a BID INTELLIGENCE SNAPSHOT using verified sources. Products in stored official BOQ: ${productContext?.item_names?.join('; ')||'Products processing'} (${productContext?.item_count??'unknown'} rows). Location: ${t.location||'Unknown'}; location verification: ${t.location_evidence?.verification||'UNVERIFIED'}.\nRead and analyze GeM Bid ${t.bid_number}: ${t.title}. Buyer: ${t.buyer || 'not recorded'}. Closing: ${deadline(t)}. Recorded lifecycle: ${lifecycleLabel(t)}. Last source check: ${stamp(t.last_source_checked_at)}. Read the official links and current bid conditions before answering. Do not invent missing facts. Explain eligibility, turnover/experience, MSME relaxations, EMD/ePBG, OEM authorization, Make in India, Bid-to-RA, specifications, required documents, restrictive clauses, risks, possible OEM matches and next actions. Official links:\n${links.join('\n') || 'No verified official links available; request the bid document.'}${!S.docs.has(id) ? '\nThe attachment index has not been loaded in this view. Retrieve attachments from the official bid document.' : ''}`;
   window.open('https://chatgpt.com/?q=' + encodeURIComponent(text), '_blank', 'noopener,noreferrer');
 }
+async function openDocumentStudio(id,tab) {
+ const bid=byId(id);if(!bid)return;
+ try {
+  if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
+  const [documents,items]=await Promise.all([docs(id),pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
+  await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(items,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
+   const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
+   const r=await fetch(`${PROJECT_URL}/functions/v1/tenderscope-download`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({document_id:documentId}),signal:AbortSignal.timeout(45000)});
+   if(!r.ok){const e=await r.json().catch(()=>({}));throw Error(e.error||'Official ATC download failed.');}return new Uint8Array(await r.arrayBuffer());
+  }});
+ } catch(e){toast(e.message||'Document studio could not open.');}
+}
 async function openFromLocation() {
   const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
   const requested = hash.get('bid') || new URLSearchParams(location.search).get('bid');
@@ -407,7 +424,8 @@ async function handleAction(event) {
   const id = button.dataset.id;
   if (button.dataset.action === 'detail') await openBid(id);
   else if (button.dataset.action === 'refresh-detail') await refreshSelectedBid();
-  else if (button.dataset.action === 'ai') askBid(id);
+  else if (button.dataset.action === 'ai') await openDocumentStudio(id,'overview');
+  else if (['prepare-docs','prepare-annexures'].includes(button.dataset.action)) await openDocumentStudio(id,button.dataset.action==='prepare-annexures'?'annexure':'compliance');
   else if (button.dataset.action === 'download') await requestMemberAction({kind:'download',document_id:button.dataset.documentId,filename:button.dataset.filename});
   else if (button.dataset.action === 'clear-filters') resetFilters();
   else if (button.dataset.action === 'all-bids') { resetFilters(); selectView('active'); }
@@ -420,7 +438,7 @@ async function handleAction(event) {
 }
 function selectView(view) {
   S.view = VIEW[view] ? view : 'active';
-  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['new','recent96'].includes(S.view) ? 'newest' : 'deadline';
+  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['active','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
   $('sortOrder').value = S.sort;
   kpis(); filter(); closeSidebar();
 }
@@ -456,8 +474,14 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeSidebar();
   if (event.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable && !$('bidDialog').open && !$('authDialog').open) { event.preventDefault(); $('searchInput').focus(); }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (!S.lastLoadedAt || Date.now() - time(S.lastLoadedAt) > 3600000) load({ quiet: true }); sessionToken().catch(() => {}); } });
-setInterval(() => { if (!document.hidden) load({ quiet: true }); }, 3600000);
+const REGISTER_REFRESH_MS = 5 * 60 * 1000;
+function refreshRegisterIfDue() {
+  if (document.hidden || S.loading) return;
+  if (!S.lastLoadedAt || Date.now() - time(S.lastLoadedAt) >= REGISTER_REFRESH_MS) load({ quiet: true });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshRegisterIfDue(); sessionToken().catch(() => {}); } });
+window.addEventListener('focus', refreshRegisterIfDue);
+setInterval(refreshRegisterIfDue, 60000);
 
 // The supported Auth client owns PKCE, callback exchange and refresh-token rotation.
 const AUTH = {session:null,mode:'login',pending:null,busy:false,access:null,otpPhone:null,otpKind:null,nextOtpAt:0};
@@ -508,6 +532,8 @@ function renderAccount(){
  $('sidebarMemberName').textContent=name;$('sidebarAvatar').textContent=name.slice(0,1).toUpperCase();
  $('sidebarMemberPlan').textContent=AUTH.access?.reason==='subscription'?'Subscriber':'Free member';
  if(S.selected&&S.docs.has(S.selected.id)&&$('detailDocuments'))$('detailDocuments').innerHTML=docPanel(S.docs.get(S.selected.id));
+ if(window.TenderScopeDocs && window.TenderScopeDocumentOwner !== (user?.id||null)){window.TenderScopeDocs.clear();window.TenderScopeDocumentOwner=user?.id||null;}
+ window.dispatchEvent(new Event('tenderscope:account'));
 }
 async function sessionToken(){
  if(!authClient)return null;
@@ -654,3 +680,11 @@ async function saveAlertPreferences(enabled){
 }
 $('alertPreferences').onsubmit=event=>{event.preventDefault();saveAlertPreferences(true);};
 $('pauseAlerts').onclick=()=>saveAlertPreferences(false);
+
+async function loadSyncStatus(){
+ const target=$('sourceFreshness');if(!target)return;
+ try{const info=await api('/rpc/phase1_health');const checked=time(info.last_gem_contact);const stale=!checked||Date.now()-checked>4*3600000;target.textContent=`${stale?'SYSTEM_SYNC_FAILED · Source checks are overdue.':'Source recovery running.'} Last GeM contact: ${stamp(info.last_gem_contact)}. ${Number(info.document_queue?.queued||0).toLocaleString('en-IN')} document jobs pending. Full coverage is not yet verified.`;target.className=stale?'error-card':'section-note';}
+ catch{target.textContent='Source sync status could not load. Verify current conditions on GeM.';}
+}
+void loadSyncStatus();
+setInterval(()=>{if(!document.hidden)void loadSyncStatus();},300000);
