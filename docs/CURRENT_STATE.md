@@ -17,3 +17,10 @@ ATC PDFs retain original page geometry/content; standard text fields receive con
 ## Verification
 
 124 backend tests and 43 frontend tests pass, including deterministic document exports, page preservation, stale-source exclusion, missing values, overflow, and PDF field flattening. Build and public ZIP validation pass. Preview UI was checked against the live public database: recovered new bid, missing-products state, studio tabs and a 93-row parsed BOQ. Full signed-in browser export and two-account user journeys have not yet been completed. Database RLS blocked cross-account update in a rolled-back acceptance check. No subscriber alert or WhatsApp message was sent.
+
+
+## Follow-up recovery — 1 November, 16:26 IST
+
+Live database had grown back to 483,986,579 bytes after ingestion resumed. Physical compaction of sync_candidates, sync_jobs, tender_versions and tender_events reduced it to 412,224,659 bytes. The verified post-maintenance snapshot retained 1,007 tenders, 5,567 versions, 7,507 events and 155,388 candidate rows. Source checks continued through 10:56 UTC. Eleven bids published within 24 hours were present in the preceding snapshot. Nightly compaction is now scheduled at 00:40 IST using pg_cron, before the existing 01:00 IST discovery run. No guard threshold, worker budget, WhatsApp delivery or source request limits were changed. This reclaims retention bloat; unbounded long-term candidate growth remains a capacity consideration.
+
+Netlify API still reports the 8 October frontend deployment. A fresh dashboard tab still shows Log in. Prior secure sign-in request timed out; its runtime was reset. Publication of the prepared document studio remains blocked by browser authentication, not by missing user authorisation. Frontend tests were repeated: 43 passed. The public package SHA-256 is e6dcc76a4d743c56b91db40bb1440375da86597fca9db25da746068e9052a3a3.
