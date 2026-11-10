@@ -1,6 +1,8 @@
 # Current state — 1 November 2026
 
-Production remains https://tenderscope-healthcare.netlify.app/. Frontend publication is pending authenticated Netlify dashboard access; the dashboard currently shows Log in. Do not report the document studio as live until its matching deployment is verified.
+Production is https://tenderscope-healthcare.netlify.app/. Netlify published deploy `6af276da5b343c9c34b7da61` on 10 November 2026 at 07:14 IST. All 64 frontend tests and static ZIP validation passed before publication. Production checks confirmed bid cards and the sync health endpoint, plus the Ask AI snapshot, item-wise compliance editor and buyer ATC/annexure workflow on GEM/2026/B/8218595. Member-account document export and two-account isolation remain to be checked in production. Scanned annexures still require manual mapping and review.
+
+The live health snapshot showed verified product rows on 94 of 559 open published bids and 9,345 pending document jobs. The release surfaces those gaps. The 1 November records below describe earlier states.
 
 ## Live repairs
 

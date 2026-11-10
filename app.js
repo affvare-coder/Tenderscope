@@ -260,7 +260,7 @@ function locationPanel(t) {
  return `<section class="detail-section location-evidence"><h3>Location evidence</h3><p><strong>${esc(t.location||'Not recorded')}</strong> · ${esc((t.location_class||'UNKNOWN').replaceAll('_',' '))}</p><p class="section-note">${verified?'Official location field checked':'UNVERIFIED · Recorded location needs an official source recheck'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
 }
 function productsPanel(items,documents=[]) {
- const current=items.filter(item=>documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
+ const current=items.filter(item=>item.is_current!==false && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
  if(!current.length)return '<p class="section-note">Products processing. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
  return `<p class="section-note">OFFICIAL FACT · ${current.length} BOQ rows. Packs and PVMS/NIV remain unverified where the source has no dedicated field. Read the buyer specification for packaging details.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong><small>PVMS: ${esc(item.pvms||'Not specified')} · NIV: ${esc(item.niv||'Not specified')}</small></td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td>${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
@@ -394,7 +394,8 @@ async function openDocumentStudio(id,tab) {
  try {
   if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
   const [documents,items]=await Promise.all([docs(id),pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
-  await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(items,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
+  const orderedItems=items.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true})||String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
+  await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
    const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
    const r=await fetch(`${PROJECT_URL}/functions/v1/tenderscope-download`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({document_id:documentId}),signal:AbortSignal.timeout(45000)});
    if(!r.ok){const e=await r.json().catch(()=>({}));throw Error(e.error||'Official ATC download failed.');}return new Uint8Array(await r.arrayBuffer());
@@ -681,9 +682,21 @@ async function saveAlertPreferences(enabled){
 $('alertPreferences').onsubmit=event=>{event.preventDefault();saveAlertPreferences(true);};
 $('pauseAlerts').onclick=()=>saveAlertPreferences(false);
 
+function sourceHealthSummary(info,now=Date.now()){
+ const coverage=info.product_coverage||{},budget=info.worker_budget||{};
+ const contact=coverage.latest_source_checked_at||info.last_gem_contact;
+ const checked=time(contact),stale=!checked||now-checked>4*3600000;
+ const exhausted=budget.exhausted===true;
+ const parts=[stale?'SYSTEM_SYNC_FAILED · Source checks are overdue.':exhausted?'Source checks paused at the daily request allowance.':'Source checks are within the recorded freshness window.',`Last source check: ${stamp(contact)}.`];
+ if(Number.isFinite(Number(coverage.open_bids))&&coverage.open_bids!=null)parts.push(`Verified products available for ${Number(coverage.with_verified_items||0).toLocaleString('en-IN')} of ${Number(coverage.open_bids).toLocaleString('en-IN')} open bids across all locations.`);
+ if(budget.daily_limit!=null)parts.push(`Daily sync allowance used: ${Number(budget.calls||0)} of ${Number(budget.daily_limit)} worker starts.`);
+ if(exhausted)parts.push(`Next daily allowance: ${stamp(budget.next_reset_at)}.`);
+ parts.push(`${Number(info.document_queue?.queued||0).toLocaleString('en-IN')} document jobs pending. Full coverage is not yet verified.`);
+ return {text:parts.join(' '),warning:stale||exhausted};
+}
 async function loadSyncStatus(){
  const target=$('sourceFreshness');if(!target)return;
- try{const info=await api('/rpc/phase1_health');const checked=time(info.last_gem_contact);const stale=!checked||Date.now()-checked>4*3600000;target.textContent=`${stale?'SYSTEM_SYNC_FAILED · Source checks are overdue.':'Source recovery running.'} Last GeM contact: ${stamp(info.last_gem_contact)}. ${Number(info.document_queue?.queued||0).toLocaleString('en-IN')} document jobs pending. Full coverage is not yet verified.`;target.className=stale?'error-card':'section-note';}
+ try{const state=sourceHealthSummary(await api('/rpc/phase1_health'));target.textContent=state.text;target.className=state.warning?'error-card':'section-note';}
  catch{target.textContent='Source sync status could not load. Verify current conditions on GeM.';}
 }
 void loadSyncStatus();
