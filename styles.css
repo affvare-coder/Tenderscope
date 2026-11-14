@@ -46,3 +46,22 @@
 .product-preview strong{color:#075e5a}.product-preview li{line-height:1.45}
 .products-table td{vertical-align:top;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:760px){.card-actions{gap:6px;flex-wrap:wrap}.tender-card{padding:14px}.product-preview{padding:10px}}
+
+/* Mobile-first simplification: prioritise search, bids and exact source data. */
+.page-intro,.kpis,.view-description,.eyebrow,.workspace-name,.member-invite{display:none!important}
+.topbar{min-height:64px}.toolbar{margin-bottom:10px}.search-row{margin-bottom:12px}
+.tender-card .badges .badge.defence,.tender-card .badges .badge.a1,.tender-card .badges .badge.a2,.tender-card .badges .badge.pending{display:none}
+.tender-card .record-meta,.tender-card .risk-line{display:none}
+.tender-card .card-actions .btn.ghost{display:none}
+@media(max-width:760px){
+ .topbar{padding:10px 14px;min-height:58px}.topbar-actions [data-commercial="plans"],.topbar-actions .saved-workspace-button,.timezone{display:none!important}
+ .mobile-brand-logo{width:38px;height:38px;object-fit:contain}
+ .workspace{padding-top:12px}.toolbar-copy h2{font-size:21px}.toolbar-copy #resultCount{font-size:12px}
+ .search-row{display:flex;gap:8px}.search-shell{min-width:0;flex:1}.search-shell input{min-width:0;font-size:14px}
+ .tender-card{padding:14px!important;margin-bottom:12px}.tender-card h3{font-size:17px;line-height:1.35}
+ .tender-card .card-top{gap:8px}.tender-card .buyer{font-size:12px}
+ .tender-card .badges{gap:5px;margin:8px 0}.tender-card .card-actions{gap:8px}
+ .tender-card .card-actions .btn{font-size:13px;padding:9px 12px}
+ .product-preview{margin:10px 0;padding:12px}.product-preview li{font-size:13px;margin:4px 0}
+ .modal,.detail-modal,.studio-modal{max-width:100vw!important}
+}
