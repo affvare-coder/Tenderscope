@@ -53,3 +53,82 @@ export function buildAnnexureTemplate({title,orientation='portrait',text='',tabl
   if(!String(text).trim()&&!String(tableText).trim())throw Error('Copy the annexure wording or table from the official source.');
   return {title:String(title).trim(),source:{label:String(source).trim()},sourceVerified:false,orientation,blocks};
 }
+
+
+// Bid-first, participant-neutral handoff. Public GeM metadata only: do not put bidder
+// profiles, notes, signatures, account details or product selections in URL parameters.
+export const BID_AI_ACTIONS=Object.freeze([
+  {id:'compliance',label:'Make compliance sheet',hint:'Exact BOQ specs, OEM/model matching and editable Word'},
+  {id:'oem',label:'Find matching OEMs',hint:'Models, HSN and verified India contacts'},
+  {id:'restrictions',label:'Analyze restrictive clauses',hint:'Identify issues, source evidence and buyer justifications'},
+  {id:'clarification',label:'Draft clarification',hint:'Clear, specific questions for the buyer'},
+  {id:'representation',label:'Draft representation',hint:'Respectful, evidence-backed request for fair competition'},
+  {id:'atc',label:'Prepare ATC & annexures',hint:'Exact buyer terms and prescribed editable forms'}
+]);
+const BID_ACTION_GUIDANCE={
+  compliance:[
+    'Produce actual editable A4 Word compliance sheet(s), not a generic outline; use the master instructions at https://tenderscope-healthcare.netlify.app/assets/compliance-atc-master.txt.',
+    'Reconcile every BOQ row and full buyer specification verbatim, exact quantity, unit, pack, source pages and any corrigendum. For each item research eligible OEMs, exact model/SKU, matching catalogue and product photo, evidence and stated deviations. Label missing evidence; never mark Yes solely because a product appears similar.',
+    'Only personalise the final output from a participant profile and letterhead actually available in this ChatGPT conversation. Do not assume any company, brand, signatory or authorisation.',
+    'Deliver editable DOCX with a rendered-page verification; explain exact missing items/files rather than inventing them.'
+  ],
+  oem:[
+    'Give the item-wise matrix first: exact buyer specification and quantity, proposed OEM/model/SKU, EXACT / PROBABLE / PARTIAL / UNVERIFIED match, parameter-by-parameter evidence, source links, HSN with classification confidence, OEM address and verified Indian contact (phone/email/WhatsApp only if published and confirmed).',
+    'Check manufacturer catalogues and authoritative company sources. Do not invent contacts, SKUs, HSN, photographs or authorisation. No generic bid summary.'
+  ],
+  restrictions:[
+    'Read the full current bid, BOQ, specification, buyer ATC, corrigenda and any official clarification; extract each potentially restrictive clause verbatim with exact source file, section/page, affected item(s) and operative wording.',
+    'Explain the practical competition impact and any legitimate buyer justification. Distinguish safety, interoperability, licensing and genuine performance requirements from potentially avoidable brand lock-in, arbitrary eligibility, excessive samples, disproportionate authorisation or documentation requirements.',
+    'Where legally relevant, check CURRENT GeM GTC, GFR, DPIIT Make in India orders, applicable MSE policies and buyer instructions against authoritative official sources. Give the exact applicable clause, document version/date and link; never assert illegality or guaranteed relief without support.',
+    'Return a short issue table rated HIGH / MEDIUM / LOW with evidence, missing facts, buyer counterarguments, and whether a neutral clarification or a formal representation is justified. If no supported restrictive condition is established, say so. Do not fabricate objections.'
+  ],
+  clarification:[
+    'Identify ambiguities, missing dimensions, conflicting buyer specifications or corrigenda and material eligibility uncertainty. Quote each exact clause/item with file/page; distinguish a factual clarification from a requested change.',
+    'Draft a concise respectful GeM buyer clarification with numbered, answerable questions and proposed objective acceptance criteria or equivalent standards only where technically justified.',
+    'Keep bid number and current deadline visible, flag unanswered questions and avoid unsupported legal accusations. Do not presume a bidder company or claim a clarification was submitted.'
+  ],
+  representation:[
+    'Before writing, analyze alleged restrictive clauses from actual current sources, their pages, practical impact, technical alternatives, possible legitimate buyer justifications, tender timeline and current applicable procurement rules. If evidence is insufficient, list it and draft a neutral clarification instead of a baseless allegation.',
+    'If a representation is justified, draft a short, persuasive, respectful buyer-addressed representation in official human language: exact clause/schedule, evidence, proportionate reason for reconsideration, objective alternative wording, fair-competition rationale and a specific requested relief. Respect technical safety and buyer discretion.',
+    'Check every legal or policy citation against current authoritative government text, quote accurately, and flag uncertainty. Do not allege mala fides, discrimination or violation as an established fact without proof.',
+    'Output an editable DOCX representation and plain text preview if source and participant facts permit; otherwise provide a clearly marked draft with blanks. Never invent bidder name, representative signature, evidence, approval, filing or response.'
+  ],
+  atc:[
+    'Prepare an editable Word ATC acceptance and the separate prescribed annexure files actually required by this bid, following https://tenderscope-healthcare.netlify.app/assets/compliance-atc-master.txt.',
+    'Reproduce current buyer ATC and annexure language, numbering, tables, orientation and corrigendum amendments faithfully. Map every authorised participant field only from verified records; maintain issuer-only and signature-only blanks.',
+    'Do not provide unconditional acceptance where an unresolved conflict/deviation exists. Render and compare each final DOCX page with the original source and report outstanding blockers.'
+  ]
+};
+export function buildBidActionPrompt({bid,documents=[],items=[],action='restrictions'}) {
+  if(!bid?.bid_number || !Object.prototype.hasOwnProperty.call(BID_ACTION_GUIDANCE,action))throw Error('Select a valid GeM bid and action.');
+  const sources=officialDocumentRecords(bid,documents);
+  // Keep links intact and URLs short; the bid itself always provides the entry point.
+  const chosen=[];let linkBudget=0;
+  for(const source of sources){
+    if(chosen.length>=10 || linkBudget+source.url.length>4800)break;
+    chosen.push(source);linkBudget+=source.url.length;
+  }
+  const rows=(Array.isArray(items)?items:[]).slice(0,7).map(i=>
+    String(i.item_number||i.item_key||'?')+'. '+String(i.name||'Unnamed row').slice(0,90)
+      +' | qty '+String(i.quantity??'unknown')+' '+String(i.unit||'')).join('\n');
+  return [
+    'You are TenderScope’s neutral Indian GeM healthcare procurement assistant. Work for ANY bidder, not a predetermined supplier.',
+    'ACTION: '+(BID_AI_ACTIONS.find(a=>a.id===action)?.label||action)+'.',
+    'Bid: '+bid.bid_number+' | '+String(bid.title||'').slice(0,250),
+    'Buyer: '+String(bid.buyer||'Not recorded').slice(0,200),
+    'Recorded closing: '+String(bid.deadline||'Unverified')+' | Last recorded GeM source check: '+String(bid.last_source_checked_at||'Not recorded')+'. Recheck current deadline and corrigenda.',
+    'OFFICIAL DOCUMENTS (not complete proof of source availability):',
+    ...(chosen.length?chosen.map(d=>d.title+': '+d.url):['No official attachment URL indexed. Retrieve the complete official GeM record for this bid.']),
+    sources.length>chosen.length?'Additional '+(sources.length-chosen.length)+' indexed official source(s) omitted from this short link; retrieve from the official bid.':'',
+    'Cached document-hash-matched item rows: '+items.length+'. These rows may NOT cover the complete BOQ.',
+    rows?'First cached item names (orientation only, not complete specs):\n'+rows:'',
+    'TASK RULES:',
+    ...BID_ACTION_GUIDANCE[action].map((line,i)=>(i+1)+'. '+line),
+    'Start with the concrete requested output, not a long questionnaire. Read every available current official source, retrieve missing BOQ/ATC and corrigenda, show page-linked facts and clearly mark what was not verified.',
+    'No private bidder data, uploaded files or images were included in this link. Reuse verified participant assets already supplied within this chat, or ask ONLY for indispensable missing details needed to finalise an authorised document.',
+    'Never claim TenderScope submitted a buyer query or representation. The user must review and file it through the appropriate GeM route.'
+  ].filter(Boolean).join('\n');
+}
+export function publicBidActionAIUrl(options){
+  return 'https://chatgpt.com/?q='+encodeURIComponent(buildBidActionPrompt(options));
+}
