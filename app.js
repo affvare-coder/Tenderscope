@@ -4,7 +4,7 @@ const API_URL = typeof location!=='undefined' && ['terminal.local','localhost'].
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'newest' };
+const S = { all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), itemRows: new Map(), products: new Map(), productsLoading: false, view: 'active', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'newest' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
@@ -176,7 +176,7 @@ async function load({ quiet = false } = {}) {
       return load({quiet});
     }
     applyFeed(data, key, new Date().toISOString());
-    S.docs.clear(); saveRegister(data);
+    S.docs.clear(); S.itemRows.clear(); saveRegister(data);
     $('errorState').hidden = true;
     loadProductSummaries();
     if (S.selected && $('bidDialog').open) refreshSelectedBid();
@@ -355,7 +355,7 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   const versionsOpen=sameBid&&!!$('detailVersions')?.closest('details')?.open;
   const changesOpen=sameBid&&!!$('detailTimeline')?.closest('details')?.open;
   const priorPanels=sameBid?Object.fromEntries(['detailProducts','detailDocuments','detailTimeline','detailVersions'].map(key=>[key,$(key)?.innerHTML||''])):{};
-  S.selected = t; S.docs.delete(id);
+  S.selected = t; S.docs.delete(id); S.itemRows.delete(id);
   const request = ++S.detailRequest;
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
@@ -374,6 +374,7 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
     pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
+  if(responses[3].status==='fulfilled')S.itemRows.set(id,responses[3].value);
   $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
   $('detailFeedback').textContent = '';
   [['detailDocuments', docPanel], ['detailTimeline', timelinePanel], ['detailVersions', versionsPanel]].forEach(([target, renderer], index) => {
@@ -393,7 +394,7 @@ async function openDocumentStudio(id,tab) {
  const bid=byId(id);if(!bid)return;
  try {
   if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
-  const [documents,items]=await Promise.all([docs(id),pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
+  const [documents,items]=await Promise.all([docs(id),S.itemRows.has(id)?Promise.resolve(S.itemRows.get(id)):pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
   const orderedItems=items.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true})||String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
   await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
    const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
