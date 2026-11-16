@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {PDFDocument,PDFTextField} from 'pdf-lib';
-import {buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate} from '../document-workflow.mjs';
+import {buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate,BID_AI_ACTIONS,publicBidActionAIUrl,officialDocumentRecords} from '../document-workflow.mjs';
 
 const master=readFileSync(new URL('../assets/compliance-atc-master.txt',import.meta.url),'utf8');
 const source=readFileSync(new URL('../document-studio.mjs',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
@@ -28,7 +28,7 @@ function harness(){
  class BrowserURL extends URL{static createObjectURL(data){const id='blob:'+blobs.size;blobs.set(id,data);return id;}static revokeObjectURL(){}}
  const report=data=>{calls.push({kind:'verification',data});return {ready:false,status:'DRAFT_BLOCKED_NOT_FOR_UPLOAD',blockers:['Review pending']};};
  const renderer=kind=>async data=>{calls.push({kind,data});return new Blob(['fixture-draft']);};
- const context=vm.createContext({document,window:{},navigator:{clipboard:{writeText:async text=>{copied=text;}}},location:{origin:'https://tenderscope-healthcare.netlify.app'},URL:BrowserURL,Blob,crypto:webcrypto,Uint8Array,PDFDocument,PDFTextField,structuredClone,fetch:async()=>new Response(master),setTimeout(){},pdfjs:{GlobalWorkerOptions:{},getDocument(){return {promise:Promise.resolve({numPages:1,async destroy(){},async getPage(){return {getViewport:()=>({width:400,height:600}),render:()=>({promise:Promise.resolve(),cancel(){}}),getTextContent:async()=>({items:[]})};}})};}},verifiedItems:items=>items,complianceDocx:renderer('compliance'),compliancePdf:renderer('pdf'),fillAnnexures:renderer('overlay'),atcAcceptanceDocx:renderer('atc'),editableAnnexureDocx:renderer('annexure'),documentVerification:report,buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate});
+ const context=vm.createContext({document,window:{},navigator:{clipboard:{writeText:async text=>{copied=text;}}},location:{origin:'https://tenderscope-healthcare.netlify.app'},URL:BrowserURL,Blob,crypto:webcrypto,Uint8Array,PDFDocument,PDFTextField,structuredClone,fetch:async()=>new Response(master),setTimeout(){},pdfjs:{GlobalWorkerOptions:{},getDocument(){return {promise:Promise.resolve({numPages:1,async destroy(){},async getPage(){return {getViewport:()=>({width:400,height:600}),render:()=>({promise:Promise.resolve(),cancel(){}}),getTextContent:async()=>({items:[]})};}})};}},verifiedItems:items=>items,complianceDocx:renderer('compliance'),compliancePdf:renderer('pdf'),fillAnnexures:renderer('overlay'),atcAcceptanceDocx:renderer('atc'),editableAnnexureDocx:renderer('annexure'),documentVerification:report,buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate,BID_AI_ACTIONS,publicBidActionAIUrl,officialDocumentRecords});
  vm.runInContext(source,context);
  const options=(overrides={})=>({userId:'member-a',bid:{id:'bid-a',bid_number:'GEM/2026/B/TEST',title:'Synthetic bid',buyer:'Synthetic buyer',source_url:'https://bidplus.gem.gov.in/showbidDocument/123'},items:[{item_key:'one',source_hash:'hash-a',name:'Test product',specification:'Full buyer specification',quantity:2}],documents:[{id:'doc-a',content_hash:'hash-a',version_no:1,kind:'ATC',official_url:'https://bidplus.gem.gov.in/a.pdf'}],...overrides});
  return {node,dialog,calls,downloads,offers,uploads,assetUploads,options,tab:key=>tabs.get(key),open:o=>context.window.TenderScopeDocs.open(o),clear:()=>context.window.TenderScopeDocs.clear(),click:id=>node(id).onclick(),copied:()=>copied};
@@ -76,9 +76,10 @@ test('image-only ATC page extraction is withheld instead of inventing source wor
 });
 
 
-test('tab selection exposes the active panel and expands the AI brief only for overview',async()=>{
- const ui=harness();await ui.open(ui.options());assert.equal(ui.node('studioAIBrief').open,false);assert.equal(ui.tab('profile').attributes['aria-pressed'],'true');assert.equal(ui.tab('profile').classes.has('active'),true);assert.equal(ui.node('studio_profile').hidden,false);
- ui.tab('overview').click();assert.equal(ui.node('studioAIBrief').open,true);assert.equal(ui.tab('overview').attributes['aria-pressed'],'true');assert.equal(ui.tab('profile').attributes['aria-pressed'],'false');assert.equal(ui.node('studio_overview').hidden,false);
+test('Ask AI opens first with six focused actions; advanced forms remain accessible',async()=>{
+ const ui=harness();await ui.open(ui.options());assert.equal(ui.node('studioAIBrief').open,false);assert.equal(ui.tab('overview').attributes['aria-pressed'],'true');assert.equal(ui.tab('overview').classes.has('active'),true);assert.equal(ui.node('studio_overview').hidden,false);assert.equal(ui.node('studio_profile').hidden,true);
+ for(const kind of ['compliance','oem','restrictions','clarification','representation','atc'])assert.match(ui.dialog.innerHTML,new RegExp('data-ai-action="'+kind+'"'));
  await ui.click('studioCopyInstructions');assert.match(ui.copied(),/Requested output: COMPLIANCE_SHEET/);
+ ui.tab('profile').click();assert.equal(ui.node('studio_profile').hidden,false);assert.equal(ui.tab('overview').attributes['aria-pressed'],'false');
  ui.tab('annexure').click();assert.equal(ui.node('studioAIBrief').open,false);assert.equal(ui.node('studio_annexure').hidden,false);assert.equal(ui.tab('annexure').attributes['aria-controls'],'studio_annexure');assert.equal(ui.tab('overview').classes.has('active'),false);
 });
