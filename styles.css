@@ -65,3 +65,14 @@
  .product-preview{margin:10px 0;padding:12px}.product-preview li{font-size:13px;margin:4px 0}
  .modal,.detail-modal,.studio-modal{max-width:100vw!important}
 }
+
+
+/* Compact, task-first Ask AI experience: no bidder questionnaire until finalisation. */
+.studio-start{padding:5px 0 16px}.studio-start h3{font-size:1.25rem;margin:8px 0}.studio-start>p{font-size:.91rem;line-height:1.55;color:#516579;margin:9px 0 16px}
+.studio-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0}
+.studio-action{display:flex;flex-direction:column;gap:6px;min-height:104px;box-sizing:border-box;padding:16px 17px;border:1px solid #cddedc;border-radius:12px;color:#153547;text-decoration:none;background:#f8fbfa;transition:border-color .15s ease,box-shadow .15s ease}
+.studio-action:hover,.studio-action:focus-visible{border-color:#087d77;box-shadow:0 3px 16px #0a64561b;outline-offset:2px}.studio-action strong{font-size:1rem;line-height:1.35}.studio-action span{font-size:.82rem;color:#54707b;line-height:1.45}.studio-action small{font-size:.75rem;color:#087d77;margin-top:auto;font-weight:700}
+.studio-start .studio-source-note{font-size:.8rem;color:#63798b;margin:8px 0;line-height:1.55}
+.studio-source-details{margin:15px 0;padding:12px 14px;border:1px solid #e0e7ec;border-radius:10px}.studio-source-details>summary{cursor:pointer;font-weight:650}
+.studio-ai-brief{margin:8px 0;border-top:1px solid #e2e7ec}.studio-ai-brief>summary{font-size:.86rem;color:#506d75;font-weight:600}
+@media(max-width:660px){.studio-dialog{width:calc(100vw - 16px);max-height:96dvh;padding:17px 13px;border-radius:12px}.studio-action-grid{grid-template-columns:1fr;gap:9px}.studio-action{min-height:88px;padding:13px 14px}.studio-tabs{gap:6px}.studio-tabs .btn{font-size:.82rem;padding:8px 10px}.studio-start>p{font-size:.86rem}}
