@@ -6,6 +6,11 @@
   NODE_VERSION = "22"
 
 [[headers]]
+  for = "/release.json"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"

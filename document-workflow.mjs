@@ -58,12 +58,18 @@ export function buildAnnexureTemplate({title,orientation='portrait',text='',tabl
 // Bid-first, participant-neutral handoff. Public GeM metadata only: do not put bidder
 // profiles, notes, signatures, account details or product selections in URL parameters.
 export const BID_AI_ACTIONS=Object.freeze([
-  {id:'compliance',label:'Make compliance sheet',hint:'Exact BOQ specs, OEM/model matching and editable Word'},
-  {id:'oem',label:'Find matching OEMs',hint:'Models, HSN and verified India contacts'},
-  {id:'restrictions',label:'Analyze restrictive clauses',hint:'Identify issues, source evidence and buyer justifications'},
+  {id:'oem',label:'Find matching OEMs',hint:'Exact products, models, packs and specification evidence'},
+  {id:'suppliers',label:'OEM contacts & email',hint:'Verified business contacts and a document-request draft'},
+  {id:'documents',label:'Compliance & annexures',hint:'Editable Word files in the buyer’s prescribed format'},
+  {id:'review',label:'Clarification & representation',hint:'Check restrictive terms and prepare the supported response'}
+]);
+// Existing focused prompts remain available without competing with the four main tasks.
+export const BID_AI_SECONDARY_ACTIONS=Object.freeze([
+  {id:'compliance',label:'Make compliance sheet',hint:'Exact BOQ specs and evidence-supported responses'},
+  {id:'atc',label:'Prepare ATC & annexures',hint:'Exact buyer terms and prescribed editable forms'},
+  {id:'restrictions',label:'Analyze restrictive clauses',hint:'Evidence, practical impact and buyer justifications'},
   {id:'clarification',label:'Draft clarification',hint:'Clear, specific questions for the buyer'},
-  {id:'representation',label:'Draft representation',hint:'Respectful, evidence-backed request for fair competition'},
-  {id:'atc',label:'Prepare ATC & annexures',hint:'Exact buyer terms and prescribed editable forms'}
+  {id:'representation',label:'Draft representation',hint:'Respectful, evidence-backed request for reconsideration'}
 ]);
 const BID_ACTION_GUIDANCE={
   compliance:[
@@ -74,7 +80,7 @@ const BID_ACTION_GUIDANCE={
   ],
   oem:[
     'Give the item-wise matrix first: exact buyer specification and quantity, proposed OEM/model/SKU, EXACT / PROBABLE / PARTIAL / UNVERIFIED match, parameter-by-parameter evidence, source links, HSN with classification confidence, OEM address and verified Indian contact (phone/email/WhatsApp only if published and confirmed).',
-    'Check manufacturer catalogues and authoritative company sources. Do not invent contacts, SKUs, HSN, photographs or authorisation. No generic bid summary.'
+    'Check manufacturer catalogues and authoritative company sources. Compare every mandatory parameter, tolerance, size and pack; a close product is not an exact match. Do not invent contacts, SKUs, HSN, photographs or authorisation. No generic bid summary.'
   ],
   restrictions:[
     'Read the full current bid, BOQ, specification, buyer ATC, corrigenda and any official clarification; extract each potentially restrictive clause verbatim with exact source file, section/page, affected item(s) and operative wording.',
@@ -99,6 +105,24 @@ const BID_ACTION_GUIDANCE={
     'Do not provide unconditional acceptance where an unresolved conflict/deviation exists. Render and compare each final DOCX page with the original source and report outstanding blockers.'
   ]
 };
+BID_ACTION_GUIDANCE.suppliers=[
+  'Read each official item and full specification before identifying an OEM or authorised supplier. Start with a concise item-wise contact matrix: item, exact model/SKU and pack, match evidence, company/address, verified Indian business phone/email and source link. Include WhatsApp only when the company explicitly publishes it as WhatsApp; do not infer it from a mobile number.',
+  'Use manufacturer websites, catalogues and verified company sources. Separate manufacturer, authorised distributor and unverified reseller; name the evidence and date checked for every claimed contact or authorisation. Mark unavailable contacts rather than inventing them or using personal contact data.',
+  'Then draft a short supplier email naming this bid, closing date, quantities, specification/pack, delivery location when verified and requested quotation validity. Request only relevant records: catalogue and exact product/pack photographs, OEM authorisation, applicable licences/certifications, MII/local-content evidence and supply lead time. Do not make an unsupported compliance declaration.',
+  'Provide the email subject, body and verified intended business recipient for review. Do not send an email, contact a supplier, imply a quotation was received or claim an authorisation exists. Ask only for indispensable missing commercial details.'
+];
+BID_ACTION_GUIDANCE.documents=[
+  'Prepare the bid-required document set: item-wise compliance sheet, ATC acceptance and each buyer-prescribed annexure actually required. First identify the required files from the current official source; do not invent annexures.',
+  ...BID_ACTION_GUIDANCE.compliance,
+  ...BID_ACTION_GUIDANCE.atc
+];
+BID_ACTION_GUIDANCE.review=[
+  ...BID_ACTION_GUIDANCE.restrictions,
+  'Choose the supported response after the evidence review: use clarification for ambiguous or conflicting requirements, representation for a substantiated request to reconsider a condition, or state that no supported objection was found. Do not draft allegations merely to fill a template.',
+  'If evidence is insufficient for a representation, draft only a concise clarification with numbered, answerable questions, exact source clauses/pages and any technically justified objective acceptance criteria. Do not imply that a requested change is already allowed.',
+  'If a representation is justified, draft a short, respectful buyer-addressed letter identifying the exact condition, evidence, practical impact, buyer counterarguments, proportionate alternative and specific relief. Verify legal citations against current authoritative government text. Do not promise acceptance or allege wrongdoing without proof.',
+  'Provide the appropriate editable DOCX and a plain text preview when source and verified participant facts permit; otherwise mark it as a draft with indispensable blanks. Never invent bidder name, signature, approval, filing or buyer response. Do not produce multiple competing letters unless the user requests them.'
+];
 export function buildBidActionPrompt({bid,documents=[],items=[],action='restrictions'}) {
   if(!bid?.bid_number || !Object.prototype.hasOwnProperty.call(BID_ACTION_GUIDANCE,action))throw Error('Select a valid GeM bid and action.');
   const sources=officialDocumentRecords(bid,documents);
@@ -113,7 +137,7 @@ export function buildBidActionPrompt({bid,documents=[],items=[],action='restrict
       +' | qty '+String(i.quantity??'unknown')+' '+String(i.unit||'')).join('\n');
   return [
     'You are TenderScope’s neutral Indian GeM healthcare procurement assistant. Work for ANY bidder, not a predetermined supplier.',
-    'ACTION: '+(BID_AI_ACTIONS.find(a=>a.id===action)?.label||action)+'.',
+    'ACTION: '+([...BID_AI_ACTIONS,...BID_AI_SECONDARY_ACTIONS].find(a=>a.id===action)?.label||action)+'.',
     'Bid: '+bid.bid_number+' | '+String(bid.title||'').slice(0,250),
     'Buyer: '+String(bid.buyer||'Not recorded').slice(0,200),
     'Recorded closing: '+String(bid.deadline||'Unverified')+' | Last recorded GeM source check: '+String(bid.last_source_checked_at||'Not recorded')+'. Recheck current deadline and corrigenda.',

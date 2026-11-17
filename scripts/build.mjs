@@ -1,7 +1,11 @@
 import {build} from 'esbuild';
-import { mkdir, copyFile, rm, cp } from 'node:fs/promises';
+import { mkdir, copyFile, rm, cp, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
+const sourceSha = execFileSync('git', ['rev-parse','HEAD'], {encoding:'utf8'}).trim();
+const dirty = !!execFileSync('git', ['status','--porcelain','--untracked-files=all'], {encoding:'utf8'}).trim();
+await writeFile('dist/release.json', JSON.stringify({source_sha:sourceSha,dirty,built_at:new Date().toISOString()})+'\n');
 for (const name of ['index.html', 'app.js', 'styles.css', 'manifest.webmanifest', 'sw.js','commercial.js','commercial-api.mjs','commercial-drafts.mjs']) {
   await copyFile(name, `dist/${name}`);
 }

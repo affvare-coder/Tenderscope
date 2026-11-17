@@ -6,9 +6,9 @@ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const context=vm.createContext({Intl,URL,Date,Map,console});
 vm.runInContext(source.slice(0,source.indexOf('async function load('))+source.slice(source.indexOf('function sourceLink('),source.indexOf('function card(t)'))+'\nthis.f={matchesView,productsPanel,productPreview};',context);
 const {matchesView,productsPanel}=context.f;
-test('missing product extraction is visible as processing and never fabricates item names',()=>{
- assert.match(context.f.productPreview({id:'unprocessed'}),/Products processing/);
- assert.match(productsPanel([],[]),/Products processing/);
+test('missing product extraction remains unverified and never fabricates item names',()=>{
+ assert.match(context.f.productPreview({id:'unprocessed'}),/Product list not yet verified/);
+ assert.match(productsPanel([],[]),/Product list not yet verified/);
 });
 const bid={id:'1',bid_number:'GEM/2026/B/123',deadline:new Date(Date.now()+86400000).toISOString(),status:'published',location_class:'DELHI'};
 test('Delhi stays out of default feeds and is available in Delhi view',()=>{assert.equal(matchesView(bid,'active'),false);assert.equal(matchesView(bid,'delhi'),true);});
