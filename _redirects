@@ -1,0 +1,3 @@
+# Ship with every manual/Drop deployment. First rule must precede SPA fallback.
+/api/public/* https://agdmlgbfxoqhztiormij.supabase.co/rest/v1/:splat 200!
+/* /index.html 200

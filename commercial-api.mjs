@@ -1,10 +1,12 @@
+// Publishable (anon) key; never put service_role or secret keys in browser code.
+const PUBLIC_SUPABASE_KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 export function createMemberApi({getToken,getUserId,fetchImpl=fetch,baseUrl='/api/public/rpc'}) {
  return async function rpc(name,args={}) {
   const userId=getUserId();
   if(!userId)throw new Error('Log in to use your member workspace.');
   const token=await getToken();
   if(!token||userId!==getUserId())throw new Error('Your account changed. Please reopen your workspace.');
-  const response=await fetchImpl(`${baseUrl}/${name}`,{method:'POST',cache:'no-store',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(20000)});
+  const response=await fetchImpl(`${baseUrl}/${name}`,{method:'POST',cache:'no-store',headers:{apikey:PUBLIC_SUPABASE_KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(20000)});
   if(userId!==getUserId())throw new Error('Your account changed. Please reopen your workspace.');
   const data=await response.json().catch(()=>null);
   if(!response.ok)throw new Error(data?.message||data?.error||'Your workspace could not be updated. Please retry.');
