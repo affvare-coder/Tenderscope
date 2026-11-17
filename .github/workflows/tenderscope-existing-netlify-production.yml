@@ -1,0 +1,56 @@
+name: Publish existing TenderScope Netlify site (no duplicate)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tenderscope-existing-production-netlify
+  cancel-in-progress: false
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      # Existing Netlify site UUID. Do not create or rename a project.
+      NETLIFY_SITE_ID: ef2a51b5-ca33-4ba5-8592-8eae11d03008
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Test and build the exact checked-out SHA
+        run: |
+          npm ci
+          npm test
+          npm run build
+          test -f dist/index.html
+          test -f netlify.toml
+      - name: Netlify authorization gate
+        if: env.NETLIFY_AUTH_TOKEN == ''
+        run: |
+          echo "::warning title=Netlify deploy blocked::Add NETLIFY_AUTH_TOKEN as a GitHub Actions repository secret, or link the existing site to main. Tests and release package are built; production is NOT published by this workflow."
+          echo "NETLIFY_DEPLOY_STATUS=BLOCKED_MISSING_TOKEN" >> "$GITHUB_ENV"
+      - name: Publish to the EXISTING site
+        if: env.NETLIFY_AUTH_TOKEN != ''
+        run: |
+          npx --yes netlify-cli@23.11.0 deploy \
+            --prod \
+            --dir=dist \
+            --site="$NETLIFY_SITE_ID" \
+            --auth="$NETLIFY_AUTH_TOKEN" \
+            --message="TenderScope GitHub $GITHUB_SHA"
+          echo "NETLIFY_DEPLOY_STATUS=DEPLOY_COMMAND_SUCCEEDED" >> "$GITHUB_ENV"
+      - name: Report outcome
+        run: |
+          echo "## Existing TenderScope Netlify release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source SHA: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target site: \`$NETLIFY_SITE_ID\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Status: \`${NETLIFY_DEPLOY_STATUS:-UNKNOWN}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production UI/browser QA must independently verify six Ask AI actions." >> "$GITHUB_STEP_SUMMARY"
