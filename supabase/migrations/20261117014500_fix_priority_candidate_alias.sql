@@ -1,4 +1,4 @@
--- Correct ambiguous lateral alias caught during real claim rollback test.
+-- Fix priority candidate alias without rewriting the inner sync_jobs alias.
 CREATE OR REPLACE FUNCTION public.claim_sync_job(p_worker_id text, p_lease_seconds integer DEFAULT 90)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -55,14 +55,14 @@ begin
   select priority_candidate.id into selected_id
   from live_missing t
   join lateral (
-   select sj.id,spriority_candidate.created_at,sj.payload->>'url' as url
+   select sj.id,sj.created_at,sj.payload->>'url' as url
    from public.sync_jobs sj
    where sj.state='queued' and sj.available_at<=now()
     and sj.payload->>'kind'='document'
     and sj.payload#>>'{row,bid_number}'=t.bid_number
     and (sj.payload->>'url' ~* '(\.csv([?#]|$)|BoqLineItemsDocument)'
       or sj.payload->>'url' ~ '/showbidDocument/')
-   order by case when sj.payload->>'url' ~* '(\.csv([?#]|$)|BoqLineItemsDocument)' then 0 else 1 end,spriority_candidate.created_at
+   order by case when sj.payload->>'url' ~* '(\.csv([?#]|$)|BoqLineItemsDocument)' then 0 else 1 end,sj.created_at
    limit 1
   ) priority_candidate on true
   order by case when priority_candidate.url ~* '(\.csv([?#]|$)|BoqLineItemsDocument)' then 0 else 1 end,
