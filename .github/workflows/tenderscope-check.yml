@@ -20,14 +20,24 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - name: Package exact Netlify publish directory
+      - name: Package verified Netlify Drop release with API proxy/auth headers
         run: |
-          test -f dist/index.html
-          (cd dist && zip -qr ../tenderscope-netlify-release.zip .)
-          unzip -l tenderscope-netlify-release.zip | grep -q 'index.html'
-      - name: Save verified, deployable ZIP
+          python3 scripts/package-drop.py
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('release/TenderScope_Public_Static.zip') as z:
+              assert z.testzip() is None
+              assert {'index.html','netlify.toml','document-studio.js','app.js'} <= set(z.namelist())
+              config=z.read('netlify.toml').decode()
+              assert 'publish = "."' in config and 'command = ""' in config
+              assert '/api/public/*' in config and 'apikey' in config
+              studio=z.read('document-studio.js').decode()
+              for action in ('Make compliance sheet','Find matching OEMs','Analyze restrictive clauses','Draft clarification','Draft representation','Prepare ATC & annexures'):
+                  assert action in studio, f'Missing 6-button UI action: {action}'
+          PY
+      - name: Save audited existing-site Drop package
         uses: actions/upload-artifact@v4
         with:
-          name: tenderscope-netlify-release
-          path: tenderscope-netlify-release.zip
+          name: tenderscope-existing-site-netlify-drop
+          path: release/TenderScope_Public_Static.zip
           retention-days: 14

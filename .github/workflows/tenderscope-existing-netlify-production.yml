@@ -20,23 +20,26 @@ jobs:
       # Existing Netlify site UUID. Do not create or rename a project.
       NETLIFY_SITE_ID: ef2a51b5-ca33-4ba5-8592-8eae11d03008
     steps:
+      - name: Netlify authorization gate
+        if: env.NETLIFY_AUTH_TOKEN == ''
+        run: |
+          echo "::warning title=Netlify deploy blocked::Add NETLIFY_AUTH_TOKEN as an Actions repository secret, or link the EXISTING Netlify project to main. The separate packaging workflow builds the audited Drop release; production has NOT been published."
+          echo "NETLIFY_DEPLOY_STATUS=BLOCKED_MISSING_TOKEN" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
+        if: env.NETLIFY_AUTH_TOKEN != ''
       - uses: actions/setup-node@v4
+        if: env.NETLIFY_AUTH_TOKEN != ''
         with:
           node-version: '22'
           cache: npm
-      - name: Test and build the exact checked-out SHA
+      - name: Test and build exact SHA
+        if: env.NETLIFY_AUTH_TOKEN != ''
         run: |
           npm ci
           npm test
           npm run build
           test -f dist/index.html
           test -f netlify.toml
-      - name: Netlify authorization gate
-        if: env.NETLIFY_AUTH_TOKEN == ''
-        run: |
-          echo "::warning title=Netlify deploy blocked::Add NETLIFY_AUTH_TOKEN as a GitHub Actions repository secret, or link the existing site to main. Tests and release package are built; production is NOT published by this workflow."
-          echo "NETLIFY_DEPLOY_STATUS=BLOCKED_MISSING_TOKEN" >> "$GITHUB_ENV"
       - name: Publish to the EXISTING site
         if: env.NETLIFY_AUTH_TOKEN != ''
         run: |
