@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const sql=readFileSync(new URL('../supabase/migrations/20261117012500_prioritize_open_bids_missing_products.sql',import.meta.url),'utf8');
+test('fast path is guarded and preserves the existing claim fairness/locking fallbacks',()=>{
+ assert.match(sql,/if streak>=source_limit and documents_in_burst=0/);
+ assert.match(sql,/not exists\([\s\S]*?daily_head/);
+ assert.match(sql,/head_claims<4/);
+ assert.match(sql,/reconciliation_claims<2/);
+ assert.match(sql,/publication_pending and streak=3/);
+ assert.match(sql,/with live_missing as materialized/);
+ assert.match(sql,/not exists\(select 1 from public\.tender_items/);
+ assert.match(sql,/BoqLineItemsDocument/);
+ assert.match(sql,/showbidDocument/);
+ assert.match(sql,/if selected_id is null then\s*select sj\.id into selected_id/);
+ assert.match(sql,/for update skip locked/);
+ assert.match(sql,/pg_try_advisory_xact_lock/);
+ assert.match(sql,/update public\.sync_jobs set state='running'/);
+ assert.match(sql,/return to_jsonb\(j\)/);
+ assert.doesNotMatch(sql,/delete from public\.|truncate table|drop table/i);
+});
