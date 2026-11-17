@@ -43,3 +43,5 @@ New read-only evidence: 557 open bids, 85 with current items, 472 without, 10,12
 A strong SCH-listing candidate `GEM/2026/B/8278976` exists in staging; its medicine content and identity as the founder's reported tender remain unverified. Private backend candidates address anonymous schedules and saved-bid retention, with separate review/testing requirements. No private backend source or production credentials are committed here. See [execution record](EXECUTION_2026_11_18.md) for acceptance limits.
 
 No production SQL, purge, credentials change or deploy occurred. Founder approval is still required for production release; backend SQL also needs disposable PostgreSQL/concurrency acceptance.
+
+Follow-up accuracy guard: anonymous SCH/Schedule labels are suppressed as product identities in cards, details and compliance validation. Stored source records remain for audited backend recovery. Final test count and exact revision are recorded in CI.

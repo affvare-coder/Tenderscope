@@ -14,6 +14,7 @@ The bounded worker already drains up to eight lightweight jobs within a 40-secon
 
 - Four primary tasks: matching OEMs; verified business contacts and email drafts; compliance and annexures; clarification and representation. Existing focused prompts remain collapsed and accessible.
 - Links explicitly hand off to ChatGPT. No integrated LLM service, autonomous email sending, complete OEM catalogue or guaranteed annexure reconstruction is claimed.
+- Anonymous SCH/Schedule labels are withheld from product previews and verified compliance rows; direct document-release verification also blocks them. This protects against already-stored placeholder rows while retaining source records for recovery.
 - Missing products remain unverified. Current extracted rows are shown with a completeness caveat; source hashes and official-host checks remain mandatory. Buyer specification line breaks are preserved.
 - Older summary requests cannot replace a newer refresh, including the same page. A failed product-preview request is distinguished from absence of extracted rows.
 - Bidder-facing source status retains freshness and coverage gaps, without worker-budget or queue jargon. Future timestamps cannot falsely prove freshness.

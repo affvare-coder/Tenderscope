@@ -54,6 +54,21 @@ const money = v => v !== null && v !== undefined && v !== '' && Number.isFinite(
 const haystack = t => [t.bid_number, t.title, t.buyer, t.location, t.category, t.subcategory, t.pvms, ...list(t.matched_keywords),...list(S.products.get(t.id)?.item_names)].filter(Boolean).join(' ').toLowerCase();
 const defence = t => !!t.defence || /army|navy|air force|dg armed|defence|military/i.test(`${t.buyer || ''} ${t.title || ''}`);
 const deadline = t => exactDeadline(t) ? stamp(t.deadline) : `${formatDate(t.closing_date || t.deadline)} · time pending`;
+// Classic-script equivalent of product-quality.mjs; shared regression cases keep both aligned.
+// Anonymous schedule labels require an official item description. They are
+// discovery signals only, never evidence of healthcare or a product identity.
+function isAnonymousScheduleLabel(value) {
+ const text=String(value??'').normalize('NFKC').trim().toUpperCase()
+  .replace(/[\u2010-\u2015\u2212]/g,'-').replace(/[.:]+$/,'').trimEnd()
+  .replace(/^S\s+C\s+H(?=[\s._:#-]*[0-9IVXLC])/,'SCH');
+ const match=text.match(/^(?:SCH|SCHED|SCHEDULE)[\s._:#-]*([0-9]{1,4}|[IVXLC]{1,8})$/);
+ if(!match)return false;
+ if(/^[0-9]+$/.test(match[1]))return true;
+ // Bound Roman schedule labels to I–XCIX; avoid words such as "MIX".
+ // Larger schedules can still use their numeric identifiers.
+ return /^(?=[XLCIV]+$)(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/.test(match[1]);
+}
+
 function officialUrl(value) {
   try {
     const u = new URL(value);
@@ -257,8 +272,8 @@ async function loadProductSummaries() {
 }
 function productPreview(t) {
   const summary=S.products.get(t.id);
-  if(!summary?.item_names?.length){
-    const message=S.productsState==='error'?'Product preview unavailable. Open the bid to retry.':S.productsState==='loading'?'Checking product list…':'Product list not yet verified.';
+  if(!summary?.item_names?.length || summary.item_names.some(isAnonymousScheduleLabel)){
+    const message=summary?.item_names?.some(isAnonymousScheduleLabel)?'Product descriptions need verification against the official BOQ.':S.productsState==='error'?'Product preview unavailable. Open the bid to retry.':S.productsState==='loading'?'Checking product list…':'Product list not yet verified.';
     return `<div class="product-preview"><strong>Products required</strong><p class="section-note">${message}</p></div>`;
   }
   const names=summary.item_names.slice(0,5),remaining=Math.max(0,Number(summary.item_count)-names.length);
@@ -269,7 +284,7 @@ function locationPanel(t) {
  return `<section class="detail-section location-evidence"><h3>Delivery location</h3><p><strong>${esc(t.location||'Not recorded')}</strong></p><p class="section-note">${verified?'Official location field checked':'Location needs verification against the official delivery details'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
 }
 function productsPanel(items,documents=[]) {
- const current=items.filter(item=>item.is_current!==false && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
+ const current=items.filter(item=>item.is_current!==false && !isAnonymousScheduleLabel(item.name) && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
  if(!current.length)return '<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
  return `<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
