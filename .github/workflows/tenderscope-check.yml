@@ -1,15 +1,16 @@
-name: TenderScope build and tests
+name: TenderScope build, tests and Netlify release package
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,3 +20,14 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Package exact Netlify publish directory
+        run: |
+          test -f dist/index.html
+          (cd dist && zip -qr ../tenderscope-netlify-release.zip .)
+          unzip -l tenderscope-netlify-release.zip | grep -q 'index.html'
+      - name: Save verified, deployable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenderscope-netlify-release
+          path: tenderscope-netlify-release.zip
+          retention-days: 14
