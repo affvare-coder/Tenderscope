@@ -1,3 +1,19 @@
+# Current state — 18 November 2026, 22:02 IST
+
+Phase 1 remains incomplete. Canonical consolidation and exact next gates: [autonomous execution plan](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md).
+
+- Main: dbbbadaeb9de90c861e39e6a8dfbb0bc31be0c2d; PR #11 merged at 07:19:50 IST. Netlify still publishes November 10 deploy 6af276da5b343c9c34b7da61. Merge is not deployment.
+- Database: 394,349,715 bytes. 569 open published bids, 127 with current product rows. These are not completeness counts.
+- About 10,250 queued document jobs. Existing hourly heads, four-hour rotating reconciliation, daily audit and bounded worker are active; full coverage is not proven. Health is degraded; two recent reconcile_sync_runs deadlocks need concurrent verification.
+- Daily 00:20 IST history pruning is active. Saved-bid safety and stale expiry proofs still block the complete expired-bid purge.
+- PR #13 remains Draft: official expected item count and complete specifications are not proven for the three real-bid controls.
+- No Make, paid model bridge, duplicate site or recurring LLM scheduler. Existing infrastructure continues while ChatGPT is closed.
+- Gemini's recorded reviews are incorporated; new review of this consolidation is requested, not claimed complete.
+
+The prior state below is retained as history and must not override this dated baseline.
+
+---
+
 # Current state — 1 November 2026
 
 Production is https://tenderscope-healthcare.netlify.app/. Netlify published deploy `6af276da5b343c9c34b7da61` on 10 November 2026 at 07:14 IST. All 64 frontend tests and static ZIP validation passed before publication. Production checks confirmed bid cards and the sync health endpoint, plus the Ask AI snapshot, item-wise compliance editor and buyer ATC/annexure workflow on GEM/2026/B/8218595. Member-account document export and two-account isolation remain to be checked in production. Scanned annexures still require manual mapping and review.

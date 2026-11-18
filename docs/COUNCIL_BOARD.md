@@ -45,3 +45,8 @@ A strong SCH-listing candidate `GEM/2026/B/8278976` exists in staging; its medic
 No production SQL, purge, credentials change or deploy occurred. Founder approval is still required for production release; backend SQL also needs disposable PostgreSQL/concurrency acceptance.
 
 Follow-up accuracy guard: anonymous SCH/Schedule labels are suppressed as product identities in cards, details and compliance validation. Stored source records remain for audited backend recovery. Final test count and exact revision are recorded in CI.
+
+
+## Consolidation — 18 November 2026, 22:02 IST
+
+The latest baseline and unified sequence are in [AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md). PR #11 is already merged; earlier pending-merge notes above are historical. Existing Netlify still serves the November 10 deploy. Live checks: 394.35 MB DB, 569 open published bids, 127 with current rows, approximately 10,250 queued document jobs. Existing hourly/four-hour jobs process subsets, not proven full sweeps. Retention protection, expiry proof refresh, source completeness and health deadlocks remain open. Preserve the no-Make/no-paid-council decision and zero recurring LLM goal. New Gemini review is requested; no new joint approval or deployment is claimed.
