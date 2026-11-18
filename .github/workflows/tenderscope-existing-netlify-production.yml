@@ -1,8 +1,15 @@
-name: Publish existing TenderScope Netlify site (no duplicate)
+name: Publish approved SHA to existing TenderScope Netlify site
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full 40-character source commit approved by the founder
+        required: true
+        type: string
+      approval:
+        description: Type DEPLOY_TENDERSCOPE after founder production approval
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,44 +23,52 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      APPROVED_SHA: ${{ inputs.source_sha }}
+      RELEASE_APPROVAL: ${{ inputs.approval }}
       # Existing Netlify site UUID. Do not create or rename a project.
       NETLIFY_SITE_ID: ef2a51b5-ca33-4ba5-8592-8eae11d03008
     steps:
-      - name: Netlify authorization gate
-        if: env.NETLIFY_AUTH_TOKEN == ''
+      - name: Require exact release approval
+        shell: bash
         run: |
-          echo "::warning title=Netlify deploy blocked::Add NETLIFY_AUTH_TOKEN as an Actions repository secret, or link the EXISTING Netlify project to main. The separate packaging workflow builds the audited Drop release; production has NOT been published."
-          echo "NETLIFY_DEPLOY_STATUS=BLOCKED_MISSING_TOKEN" >> "$GITHUB_ENV"
+          [[ "$RELEASE_APPROVAL" == "DEPLOY_TENDERSCOPE" ]] || { echo '::error::Founder approval is required'; exit 1; }
+          [[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Provide a full source commit SHA'; exit 1; }
       - uses: actions/checkout@v4
-        if: env.NETLIFY_AUTH_TOKEN != ''
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
-        if: env.NETLIFY_AUTH_TOKEN != ''
         with:
           node-version: '22'
           cache: npm
-      - name: Test and build exact SHA
-        if: env.NETLIFY_AUTH_TOKEN != ''
+      - name: Test and build exact approved SHA
         run: |
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
           npm ci
           npm test
           npm run build
-          test -f dist/index.html
-          test -f netlify.toml
+          node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("dist/release.json")); if(r.source_sha!==process.env.APPROVED_SHA || r.dirty) process.exit(1);'
       - name: Publish to the EXISTING site
-        if: env.NETLIFY_AUTH_TOKEN != ''
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
+          test -n "$NETLIFY_AUTH_TOKEN" || { echo '::error title=Deployment blocked::Netlify authorization is missing; production was not published'; exit 1; }
           npx --yes netlify-cli@23.11.0 deploy \
             --prod \
             --dir=dist \
             --site="$NETLIFY_SITE_ID" \
-            --auth="$NETLIFY_AUTH_TOKEN" \
-            --message="TenderScope GitHub $GITHUB_SHA"
-          echo "NETLIFY_DEPLOY_STATUS=DEPLOY_COMMAND_SUCCEEDED" >> "$GITHUB_ENV"
+            --message="TenderScope approved source $APPROVED_SHA"
+      - name: Verify live source revision
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 20 https://tenderscope-healthcare.netlify.app/release.json -o /tmp/tenderscope-live-release.json
+          node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("/tmp/tenderscope-live-release.json")); if(r.source_sha!==process.env.APPROVED_SHA || r.dirty) throw Error("Live revision differs from approved source");'
       - name: Report outcome
+        if: always()
+        env:
+          RELEASE_STATUS: ${{ job.status }}
         run: |
           echo "## Existing TenderScope Netlify release" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Source SHA: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Target site: \`$NETLIFY_SITE_ID\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Status: \`${NETLIFY_DEPLOY_STATUS:-UNKNOWN}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Production UI/browser QA must independently verify six Ask AI actions." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Approved source: $APPROVED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target site: $NETLIFY_SITE_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Outcome: $RELEASE_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production browser QA must still verify the four primary workflows." >> "$GITHUB_STEP_SUMMARY"

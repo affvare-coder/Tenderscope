@@ -24,16 +24,18 @@ jobs:
         run: |
           python3 scripts/package-drop.py
           python3 - <<'PY'
-          import zipfile
+          import json, os, zipfile
           with zipfile.ZipFile('release/TenderScope_Public_Static.zip') as z:
               assert z.testzip() is None
-              assert {'index.html','netlify.toml','document-studio.js','app.js'} <= set(z.namelist())
+              assert {'index.html','netlify.toml','document-studio.js','app.js','release.json'} <= set(z.namelist())
               config=z.read('netlify.toml').decode()
               assert 'publish = "."' in config and 'command = ""' in config
               assert '/api/public/*' in config and 'apikey' in config
+              release=json.loads(z.read('release.json'))
+              assert release['source_sha'] == os.environ['GITHUB_SHA'] and release['dirty'] is False
               studio=z.read('document-studio.js').decode()
-              for action in ('Make compliance sheet','Find matching OEMs','Analyze restrictive clauses','Draft clarification','Draft representation','Prepare ATC & annexures'):
-                  assert action in studio, f'Missing 6-button UI action: {action}'
+              for action in ('Find matching OEMs','OEM contacts & email','Compliance & annexures','Clarification & representation'):
+                  assert action in studio, f'Missing primary workflow: {action}'
           PY
       - name: Save audited existing-site Drop package
         uses: actions/upload-artifact@v4

@@ -76,3 +76,6 @@
 .studio-source-details{margin:15px 0;padding:12px 14px;border:1px solid #e0e7ec;border-radius:10px}.studio-source-details>summary{cursor:pointer;font-weight:650}
 .studio-ai-brief{margin:8px 0;border-top:1px solid #e2e7ec}.studio-ai-brief>summary{font-size:.86rem;color:#506d75;font-weight:600}
 @media(max-width:660px){.studio-dialog{width:calc(100vw - 16px);max-height:96dvh;padding:17px 13px;border-radius:12px}.studio-action-grid{grid-template-columns:1fr;gap:9px}.studio-action{min-height:88px;padding:13px 14px}.studio-tabs{gap:6px}.studio-tabs .btn{font-size:.82rem;padding:8px 10px}.studio-start>p{font-size:.86rem}}
+
+/* Preserve the buyer's line breaks and keep long specification text inside its cell. */
+.buyer-specification { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -8,3 +8,6 @@
 
 /*.css
   Cache-Control: public, max-age=60, must-revalidate
+
+/release.json
+  Cache-Control: no-store

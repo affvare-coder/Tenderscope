@@ -31,3 +31,17 @@ Founder: final objectives and production release approvals. ChatGPT: product/tec
 - [ ] Council: CTO reviews SQL snapshots and posts `[COUNCIL]` evidence/recommendations.
 
 **Critical distinction:** GitHub build success != Netlify publication. Await authorized deployment credential/linkage; live six-button rollout remains unverified.
+
+## Execution update — 18 November 2026 IST
+
+[#10](https://github.com/affvare-coder/Tenderscope/issues/10) tracks the current work. Real delegated specialists audited discovery and the live database, implemented the four-workflow studio, and performed an independent QA pass. These are task-scoped agents, not an unattended Council bridge; Gemini did not review this change.
+
+Prepared on `improve/reliability-20261118`: four primary workflows with focused legacy prompts retained; honest incomplete-product and preview-error states; stale-summary race fix; exact specification line breaks; nontechnical source status; manual exact-SHA release and live revision verification. Local frontend suite: 87 passed. Browser preview on `GEM/2026/B/8281503` confirms the four primary choices and explicitly missing product details. Existing production still shows its older three-action UI.
+
+New read-only evidence: 557 open bids, 85 with current items, 472 without, 10,120 queued document jobs at 00:31 IST. Actual worker v27 already batches short jobs; don't add a second batch loop. Existing reserved-query selection used current indexes in about 9ms.
+
+A strong SCH-listing candidate `GEM/2026/B/8278976` exists in staging; its medicine content and identity as the founder's reported tender remain unverified. Private backend candidates address anonymous schedules and saved-bid retention, with separate review/testing requirements. No private backend source or production credentials are committed here. See [execution record](EXECUTION_2026_11_18.md) for acceptance limits.
+
+No production SQL, purge, credentials change or deploy occurred. Founder approval is still required for production release; backend SQL also needs disposable PostgreSQL/concurrency acceptance.
+
+Follow-up accuracy guard: anonymous SCH/Schedule labels are suppressed as product identities in cards, details and compliance validation. Stored source records remain for audited backend recovery. Final test count and exact revision are recorded in CI.
