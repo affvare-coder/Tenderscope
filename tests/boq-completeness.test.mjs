@@ -18,14 +18,14 @@ test('empty BOQ is Unverified; official missing count is not guessed from K',()=
  const zero=assessBoqCompleteness({items:[],documents:docs,expectedCountEvidence:evidence(5)});
  assert.equal(zero.state,'Unverified');assert.match(zero.label,/0 of 5/);
  const unknown=assessBoqCompleteness({items:[row(1)],documents:docs});
- assert.equal(unknown.state,'Partial');assert.equal(unknown.expected_item_count,null);assert.match(unknown.label,/1 of \?/);
+ assert.equal(unknown.state,'Extracted');assert.equal(unknown.expected_item_count,null);assert.match(unknown.label,/total count pending/);
 });
 
 test('Complete only when independent official count, hashes, units, quantities and full specification comparisons all pass',()=>{
  const v=assessBoqCompleteness({items:[row(1),row(2)],documents:docs,expectedCountEvidence:evidence(2)});
  assert.equal(v.state,'Complete');assert.equal(v.ready,true);assert.equal(v.specification_confirmed_count,2);
  const notCompared=assessBoqCompleteness({items:[{...row(1),specification_verified:false},row(2)],documents:docs,expectedCountEvidence:evidence(2)});
- assert.equal(notCompared.state,'Partial');assert.equal(notCompared.verified_item_count,2);assert.equal(notCompared.ready,false);
+ assert.equal(notCompared.state,'Partial');assert.equal(notCompared.verified_item_count,1);assert.equal(notCompared.ready,false);
 });
 
 test('SCH 1, missing spec/quantity/unit and stale hash are excluded from K',()=>{
@@ -53,7 +53,7 @@ test('fabricated, non-GeM or hash-stale expected counts cannot make Complete',()
   {...evidence(1),source_type:'extracted_item_rows'}
  ]){
   assert.equal(verifiedExpectedCount(candidate,docs),null);
-  assert.equal(assessBoqCompleteness({items:[row(1)],documents:docs,expectedCountEvidence:candidate}).state,'Partial');
+  assert.equal(assessBoqCompleteness({items:[row(1)],documents:docs,expectedCountEvidence:candidate}).state,'Extracted');
  }
 });
 
@@ -68,4 +68,15 @@ test('final compliance sign-off is blocked even with all review flags and verifi
  const unknown=documentVerification(base);assert.equal(unknown.ready,false);
  const okay=documentVerification({...base,expectedCountEvidence:evidence(1)});
  assert.equal(okay.ready,true);assert.equal(okay.boq.state,'Complete');
+});
+
+test('legacy current rows without independent parameter review never count as verified K',()=>{
+ const noProof={...row(1),specification_verified:undefined};
+ const v=assessBoqCompleteness({items:[noProof],documents:docs,expectedCountEvidence:evidence(1)});
+ assert.equal(v.state,'Unverified');assert.equal(v.verified_item_count,0);assert.equal(v.ready,false);
+});
+test('ATC-only references are not full buyer specifications even when mistakenly flagged',()=>{
+ const rowWithPointer={...row(1),specification:'As per the Specification attached in the ATC'};
+ const v=assessBoqCompleteness({items:[rowWithPointer],documents:docs,expectedCountEvidence:evidence(1)});
+ assert.equal(v.state,'Unverified');assert.equal(v.verified_item_count,0);
 });
