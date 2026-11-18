@@ -13,6 +13,9 @@ const officialUrl=v=>{
 const fingerprint=(url,hash)=>clean(url)+'\u0000'+clean(hash);
 const validQty=v=>v!==null&&v!==undefined&&clean(v)!==''&&Number.isFinite(Number(v))&&Number(v)>0;
 const countInt=v=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0&&v<=100000;
+// GeM references to an ATC/annexure are pointers to the specification, not
+// the complete mandatory technical parameters.
+const referenceOnly=v=>/^(?:as\s+per|refer\s+to|see)\s+(?:the\s+)?(?:specification|specifications|technical\s+specification|atc|buyer\s+added\s+terms?|annexure|attached\s+document)\b/i.test(clean(v));
 
 // N must come from an independent original GeM bid/schedule count or BOQ count,
 // with a verifiable source-page reference and an available matching file hash.
@@ -43,13 +46,17 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
   if(!officialUrl(item.source_url)||!clean(item.source_hash)||!available.has(fingerprint(item.source_url,item.source_hash))){
    sourceMismatch++;incomplete++;continue;
   }
-  if(!validQty(item.quantity)||unknown(item.unit)||unknown(item.specification)){incomplete++;continue;}
+  if(!validQty(item.quantity)||unknown(item.unit)||unknown(item.specification)||referenceOnly(item.specification)){incomplete++;continue;}
+  // SHA-proven document association is not a full-text/specification proof.
+  // No legacy row gets counted in K without an independent parameter check.
+  if(item.specification_verified!==true&&item.specs_verified!==true){
+   specsUnconfirmed++;incomplete++;continue;
+  }
   verified.push(item);
-  if(item.specification_verified!==true)specsUnconfirmed++;
  }
  const count=verified.length;
  const complete=expected!==null&&count===expected&&incomplete===0&&specsUnconfirmed===0;
- const state=complete?'Complete':count>0?'Partial':'Unverified';
+ const state=complete?'Complete':count===0?'Unverified':expected===null?'Extracted':'Partial';
  if(expected===null)issues.push('Official expected item count has not been independently verified');
  if(anonymous)issues.push(anonymous+' anonymous schedule label(s) lack product identity');
  if(sourceMismatch)issues.push(sourceMismatch+' row(s) do not match an available official document SHA');
@@ -58,7 +65,8 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
  if(specsUnconfirmed)issues.push(specsUnconfirmed+' row(s) have not had every specification parameter compared to the official source');
  if(expected!==null&&count!==expected)issues.push('Official count '+expected+' differs from '+count+' verified row(s)');
  const label=state==='Complete'?'Complete · '+count+' of '+expected:
-   state==='Partial'?'Partial · '+count+' of '+(expected??'?')+' items verified':
+   state==='Partial'?'Partial · '+count+' of '+expected+' items verified':
+   state==='Extracted'?'Extracted · '+count+' verified item(s); total count pending':
    'Unverified · 0 of '+(expected??'?')+' items';
  return {state,expected_item_count:expected,verified_item_count:count,
   total_current_rows:items.filter(i=>i&&i.is_current!==false).length,
