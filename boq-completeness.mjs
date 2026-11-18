@@ -70,5 +70,5 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
    'Unverified · 0 of '+(expected??'?')+' items';
  return {state,expected_item_count:expected,verified_item_count:count,
   total_current_rows:items.filter(i=>i&&i.is_current!==false).length,
-  specification_confirmed_count:count-specsUnconfirmed,ready:complete,issues,items:verified,label};
+  specification_confirmed_count:count,ready:complete,issues,items:verified,label};
 }
