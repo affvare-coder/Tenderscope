@@ -283,11 +283,17 @@ function locationPanel(t) {
  const evidence=t.location_evidence||{},verified=evidence.verification==='OFFICIAL_FACT';
  return `<section class="detail-section location-evidence"><h3>Delivery location</h3><p><strong>${esc(t.location||'Not recorded')}</strong></p><p class="section-note">${verified?'Official location field checked':'Location needs verification against the official delivery details'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
 }
-function productsPanel(items,documents=[]) {
+function productsPanel(items,documents=[],bid=null) {
+ const completeness=typeof window!=='undefined'&&window.TenderScopeDocs?.assessBoqCompleteness
+  ? window.TenderScopeDocs.assessBoqCompleteness({items,documents,expectedCountEvidence:bid?.expected_item_count_evidence||null})
+  : null;
+ const note=completeness
+  ? '<p class="section-note" role="status"><strong>BOQ completeness: '+esc(completeness.label)+'</strong>. '+(completeness.ready?'Official item count and source specifications reconciled.':'Final compliance sign-off is blocked until full BOQ verification.')+'</p>'
+  : '<p class="section-note">BOQ completeness unverified. Official expected item count has not been reconciled.</p>';
  const current=items.filter(item=>item.is_current!==false && !isAnonymousScheduleLabel(item.name) && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
- if(!current.length)return '<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
+ if(!current.length)return note+'<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
- return `<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
+ return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p><div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Not specified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
 }
 function card(t) {
   const h = hrs(t), risk = list(t.risk_flags)[0], verified = exactDeadline(t), state = lifecycle(t);
@@ -399,7 +405,7 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
   if(responses[3].status==='fulfilled')S.itemRows.set(id,responses[3].value);
-  $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
+  $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value,t):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
   $('detailFeedback').textContent = '';
   [['detailDocuments', docPanel], ['detailTimeline', timelinePanel], ['detailVersions', versionsPanel]].forEach(([target, renderer], index) => {
     const result = responses[index];
@@ -420,7 +426,7 @@ async function openDocumentStudio(id,tab) {
   if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
   const [documents,items]=await Promise.all([docs(id),S.itemRows.has(id)?Promise.resolve(S.itemRows.get(id)):pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
   const orderedItems=items.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true})||String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
-  await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
+  await window.TenderScopeDocs.open({bid,tab,documents,sourceItems:orderedItems,expectedCountEvidence:bid.expected_item_count_evidence||null,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
    const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
    const r=await fetch(`${PROJECT_URL}/functions/v1/tenderscope-download`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({document_id:documentId}),signal:AbortSignal.timeout(45000)});
    if(!r.ok){const e=await r.json().catch(()=>({}));throw Error(e.error||'Official ATC download failed.');}return new Uint8Array(await r.arrayBuffer());
