@@ -35,7 +35,7 @@ function harness(){
  return {node,dialog,calls,downloads,offers,uploads,assetUploads,options,tab:key=>tabs.get(key),open:o=>context.window.TenderScopeDocs.open(o),clear:()=>context.window.TenderScopeDocs.clear(),click:id=>node(id).onclick(),copied:()=>copied};
 }
 const image=()=>({size:100,type:'image/png',arrayBuffer:async()=>new Uint8Array([137,80,78,71]).buffer});
-function completeProfile(ui){ui.node('studio_company').value='Private Fixture Company';ui.node('studio_signatory').value='Private Signatory';ui.node('studio_place').value='Fixture City';ui.node('studio_licences').value='Private licence 42';}
+function completeProfile(ui){ui.node('studioIncompleteDraft').checked=true;ui.node('studio_company').value='Private Fixture Company';ui.node('studio_signatory').value='Private Signatory';ui.node('studio_place').value='Fixture City';ui.node('studio_licences').value='Private licence 42';}
 
 test('actual instruction handlers use supported kinds and exclude private profile by default and from all URLs',async()=>{
  const ui=harness();await ui.open(ui.options({tab:'annexure'}));completeProfile(ui);
@@ -94,4 +94,20 @@ test('missing product rows never imply complete source extraction',async()=>{
  assert.match(ui.dialog.innerHTML,/Product details are not available yet/);
  assert.match(ui.dialog.innerHTML,/confirm that they cover the complete official BOQ/);
  assert.doesNotMatch(ui.dialog.innerHTML,/fully analyzed|complete extraction|0 verified product rows/i);
+});
+
+test('an incomplete BOQ requires fresh acknowledgment for each opened draft',async()=>{
+ const ui=harness();
+ await ui.open(ui.options());
+ for(const id of ['studioDocx','studioCompliancePdf','studioATCWord','studioAnnexureWord','studioAnnexure']){
+  await ui.click(id);
+  assert.match(ui.node('studioStatus').textContent,/incomplete-draft acknowledgment/);
+ }
+ assert.equal(ui.downloads.length,0);
+ completeProfile(ui);
+ await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);
+ await ui.open(ui.options({bid:{id:'next',bid_number:'GEM/TEST/2'}}));
+ await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);
 });
