@@ -79,3 +79,11 @@
 
 /* Preserve the buyer's line breaks and keep long specification text inside its cell. */
 .buyer-specification { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.bidder-checks-mini {display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin:.55rem 0;color:var(--muted,#475569);font-size:.8rem}
+.bidder-checks-mini b {font-weight:600;color:var(--ink,#192735)}
+.bidder-facts {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.65rem 1.2rem;margin:1rem 0}
+.bidder-facts dt {font-size:.8rem;color:var(--muted,#475569)}
+.bidder-facts dd {margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.bidder-facts a {display:block;font-size:.78rem;text-decoration:underline}
+.bidder-checks details p {margin:.55rem 0}
