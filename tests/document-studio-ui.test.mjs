@@ -111,3 +111,12 @@ test('an incomplete BOQ requires fresh acknowledgment for each opened draft',asy
  await ui.click('studioDocx');
  assert.equal(ui.downloads.length,1);
 });
+
+test('direct draft, annexure and general actions open the requested workspace',async()=>{
+ for(const [tab,expected] of [['compliance','compliance'],['annexure','annexure'],['overview','overview'],['unknown','overview']]){
+  const ui=harness();
+  await ui.open(ui.options({tab}));
+  assert.equal(ui.tab(expected).attributes['aria-pressed'],'true');
+  assert.equal(ui.node('studio_'+expected).hidden,false);
+ }
+});

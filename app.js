@@ -50,7 +50,7 @@ function deadlineTime(t) {
   return time(t.deadline);
 }
 const hrs = t => deadlineTime(t) === null ? null : (deadlineTime(t) - Date.now()) / 36e5;
-const money = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 'Not published';
+const money = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 'Not yet verified';
 const haystack = t => [t.bid_number, t.title, t.buyer, t.location, t.category, t.subcategory, t.pvms, ...list(t.matched_keywords),...list(S.products.get(t.id)?.item_names)].filter(Boolean).join(' ').toLowerCase();
 const defence = t => !!t.defence || /army|navy|air force|dg armed|defence|military/i.test(`${t.buyer || ''} ${t.title || ''}`);
 const deadline = t => exactDeadline(t) ? stamp(t.deadline) : `${formatDate(t.closing_date || t.deadline)} · time pending`;

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const context=vm.createContext({Intl,URL,Date,Map,console});
-vm.runInContext(source.slice(0,source.indexOf('async function load('))+source.slice(source.indexOf('function sourceLink('),source.indexOf('function card(t)'))+'\nthis.f={matchesView,productsPanel,productPreview};',context);
+vm.runInContext(source.slice(0,source.indexOf('async function load('))+source.slice(source.indexOf('function sourceLink('),source.indexOf('function card(t)'))+'\nthis.f={matchesView,productsPanel,productPreview,money};',context);
 const {matchesView,productsPanel}=context.f;
 test('missing product extraction remains unverified and never fabricates item names',()=>{
  assert.match(context.f.productPreview({id:'unprocessed'}),/Product list not yet verified/);
@@ -50,4 +50,10 @@ test('96-hour view includes the full four-day publication window and excludes re
  for(const published_at of [null,'invalid',new Date(Date.now()-97*3600000).toISOString(),new Date(Date.now()+3600000).toISOString()])assert.equal(matchesView({...t,published_at},'recent96'),false);
  assert.equal(matchesView({...t,is_extended:true},'recent96'),false);
  assert.equal(matchesView({...t,deadline:'2020-01-01'},'recent96'),false);
+});
+
+test('missing monetary evidence stays unverified and published amounts include zero',()=>{
+ for(const value of [null,undefined,'','   '])assert.equal(context.f.money(value),'Not yet verified');
+ assert.equal(context.f.money(0),'₹0');
+ assert.equal(context.f.money(6000000),'₹60,00,000');
 });
