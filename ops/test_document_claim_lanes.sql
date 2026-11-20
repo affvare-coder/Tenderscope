@@ -41,4 +41,24 @@ do $test$ declare j jsonb; begin
  update pg_temp.sync_jobs set state='succeeded' where id=(j->>'id')::uuid;
  if pg_temp.claim_sync_job('fixture',30) is not null then raise exception 'claimed before retry time'; end if;
 end $test$;
+-- A newer child must be able to finish the BOQ before all fresh parents run.
+update pg_temp.sync_jobs set state='succeeded';
+insert into pg_temp.sync_jobs(run_id,mode,dedupe_key,created_at,payload)
+ select r.id,'hourly',p.label,now()-p.queued_ago,
+   jsonb_build_object('kind','document','url',p.url,'lane',p.lane,
+     'row',jsonb_build_object('bid_number',p.bid,'published_at',now()-p.published_ago,'closes_at',now()+interval '7 days'))
+ from pg_temp.sync_runs r cross join (values
+   ('parent','new','normal','https://bidplus.gem.gov.in/showbidDocument/101',interval '7 hours',interval '10 hours'),
+   ('csv','old','official-pdf-attachment','https://mkp.gem.gov.in/uploaded_documents/BoqLineItemsDocument/1.csv',interval '1 hour',interval '12 hours'),
+   ('spec','old','official-pdf-attachment','https://mkp.gem.gov.in/uploaded_documents/BoqDocument/1.pdf',interval '2 hours',interval '12 hours'),
+   ('next-csv','new','official-pdf-attachment','https://mkp.gem.gov.in/uploaded_documents/BoqLineItemsDocument/2.csv',interval '3 hours',interval '10 hours')
+ ) p(label,bid,lane,url,queued_ago,published_ago);
+do $test$ declare expected text; chosen jsonb; begin
+ foreach expected in array array['parent','csv','spec','next-csv'] loop
+  update pg_temp.sync_state set state=jsonb_build_object('document_turn',case when expected='parent' then 0 else 2 end,'discovery_streak',12) where key='queue_dispatch';
+  chosen:=pg_temp.claim_sync_job('attachment-fixture',30);
+  if chosen->>'dedupe_key' is distinct from expected then raise exception 'Expected %, got %',expected,chosen->>'dedupe_key'; end if;
+  update pg_temp.sync_jobs set state='succeeded' where id=(chosen->>'id')::uuid;
+ end loop;
+end $test$;
 rollback;
