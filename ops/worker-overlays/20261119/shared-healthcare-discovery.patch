@@ -1,0 +1,56 @@
+--- a/worker/gem.mjs
++++ b/worker/gem.mjs
+@@ -126,5 +126,5 @@
+ }
+ 
+-const specificHealthcare = /\b(?:dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
++const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
+ const clinicalContext = /\b(?:dental|oral|amalgam|endodontic|prosthodontic|orthodontic|medical|surgical|clinical|diagnostic|pharmaceutical|pharma|medicines?|drugs?|patients?|nitrile|examination|sterile|sutures?|catheter|gauze|bandage|anaesthetic|anesthetic|PVMS\s*[:\-]?\s*\d+)\b/i;
+ const definiteGoods = /\b(?:chair|autoclave|equipment|materials?|consumables?|expendables?|instruments?|mask|gloves?|gown|medicine|tablet|capsule|reagent|supplies|inject|syringe|burs?|implant|catheter|scalpel|forceps|apparatus|device|machine|monitor|kit|unit|bed|trolley|wheelchair|drug)\b/i;
+@@ -194,5 +194,10 @@
+   const accepted = evidence.filter(e => e.healthcare);
+   if (!accepted.length) {
+-    if (possibleHealthcare) { result.status = 'pending_verification'; reasons.push('HEALTHCARE_CONTEXT_UNVERIFIED'); }
++    const anonymousSchedule = rawSegments.length > 0 && rawSegments.every(value =>
++      /^(?:(?:sch(?:edule)?|boq)(?:\s*(?:items?|no\.?|number))?[\s:#.\-]*[a-z]?\d*|item\s*(?:no\.?)?\s*\d+)$/i.test(clean(value)));
++    if (anonymousSchedule) {
++      result.status = 'pending_verification';
++      reasons.push('GENERIC_TITLE_REQUIRES_OFFICIAL_DOCUMENT');
++    } else if (possibleHealthcare) { result.status = 'pending_verification'; reasons.push('HEALTHCARE_CONTEXT_UNVERIFIED'); }
+     else reasons.push('NON_HEALTHCARE_OR_INCIDENTAL_MATCH');
+     return result;
+@@ -209,13 +214,6 @@
+   if ((rules.organisations?.aliases?.DGAFMS ?? []).some(alias => matchesTerm(orgText, alias))) result.priority += 25;
+   if (/\b(?:ECHS|PVMS|DGLP)\b/i.test([content, orgText].join(' '))) result.priority += 10;
+-  if (rules.q2?.exclude !== false) {
+-    if (q2Status === 'Q2') {
+-      const exception = rules.q2?.exceptions_enabled === true && (rules.q2.exception_terms ?? []).some(term => matchesTerm(content, term));
+-      if (!exception) { reasons.push('Q2_EXCLUDED'); return result; }
+-      reasons.push('Q2_CONFIGURED_EXCEPTION');
+-    } else if (q2Status === 'UNKNOWN') {
+-      result.status = 'pending_verification'; reasons.push('Q2_UNKNOWN_REQUIRES_OFFICIAL_DOCUMENT'); return result;
+-    }
+-  }
++  // The shared feed records the quadrant so individual bidders can filter it.
++  if (q2Status === 'Q2') reasons.push('Q2_BIDDER_PREFERENCE');
+   // Past deadlines are deliberately not excluded: reconciliation may find extensions.
+   result.included = true; result.status = 'eligible'; reasons.push('HEALTHCARE_ITEM_EVIDENCE');
+--- a/worker/sync.mjs
++++ b/worker/sync.mjs
+@@ -110,5 +110,5 @@
+   if(!existing&&context?.retired&&(!row.closes_at||Date.parse(row.closes_at)<=Date.parse(context.retired)))return;
+   const v=classify(row,rules);
+-  const hardExcluded=v.reasons.includes('STANDALONE_RA')||v.reasons.includes('AUTOMOTIVE_ONLY_SOURCE_EVIDENCE')||(v.q2_status==='Q2'&&!v.reasons.includes('Q2_CONFIGURED_EXCEPTION'))
++  const hardExcluded=v.reasons.includes('STANDALONE_RA')||v.reasons.includes('AUTOMOTIVE_ONLY_SOURCE_EVIDENCE')
+    ||(v.reasons.includes('SERVICES_ONLY')&&row.document_verification_status==='VERIFIED');
+   const knownEligible=!!existing&&existing.ingestion_status!=='excluded'&&existing.status!=='excluded'&&!hardExcluded;
+@@ -298,7 +298,7 @@
+    const v=classify(row,rules);
+    if(main)await stage({...row,observed_at:observed()},v,lane);
+-   const hardExcluded=v.reasons.includes('STANDALONE_RA')||v.reasons.includes('AUTOMOTIVE_ONLY_SOURCE_EVIDENCE')||(v.q2_status==='Q2'&&!v.reasons.includes('Q2_CONFIGURED_EXCEPTION'))
++   const hardExcluded=v.reasons.includes('STANDALONE_RA')||v.reasons.includes('AUTOMOTIVE_ONLY_SOURCE_EVIDENCE')
+     ||(v.reasons.includes('SERVICES_ONLY')&&row.document_verification_status==='VERIFIED');
+-   if(parsed&&!parsed.annotation_scan_complete&&!v.reasons.includes('Q2_EXCLUDED')){cursor.annotation_page=parsed.annotation_next_page;cursor.document_hash=doc.content_hash;}
++   if(parsed&&!parsed.annotation_scan_complete){cursor.annotation_page=parsed.annotation_next_page;cursor.document_hash=doc.content_hash;}
+    else delete cursor.annotation_page;
+    if(v.included||(existing&&existing.ingestion_status!=='excluded'&&!hardExcluded)){

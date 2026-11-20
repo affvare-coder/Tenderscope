@@ -1,0 +1,39 @@
+--- a/worker/products.mjs
++++ b/worker/products.mjs
+@@ -1,13 +1,13 @@
+ // Deterministic, bounded CSV extraction. Never split an item name on commas.
+-export const PRODUCT_PARSER_VERSION = 'gem-boq-csv-v3';
++export const PRODUCT_PARSER_VERSION = 'gem-boq-csv-v4';
+ const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+ export const isPlaceholderProductName=value=>/^(?:title|item|product)[\s_:#-]*\d+$/i.test(clean(value));
+ function officialItemName(title,description){
+  if(!isPlaceholderProductName(title))return title;
+  // The official description is copied exactly, without inferring a product,
+  // OEM, SKU, pack or spelling correction from an anonymous numbered title.
+- if(description.length>2&&/[\p{L}]/u.test(description)&&!isPlaceholderProductName(description)
+-  &&!(/^(?:as per|refer to|see)\b/i.test(description)))return description;
++ if(description.trim().length>2&&/[\p{L}]/u.test(description)&&!isPlaceholderProductName(description)
++  &&!(/^(?:as per|refer to|see)\b/i.test(description.trim())))return description;
+  throw new Error('boq_placeholder_item_name_requires_specification');
+ }
+ export function csvRows(text) {
+@@ -37,12 +37,17 @@
+   const h=rows.findIndex(r=>r.some(v=>['itemtitle','itemname','itemdescription'].includes(normal(v)))&&r.some(v=>['itemquantity','quantity','qty'].includes(normal(v))));
+   if(h<0)throw new Error('unsupported_boq_csv_headers');
+   const headers=rows[h].map(normal),col=key=>aliases[key].map(a=>headers.indexOf(a)).find(n=>n>=0)??-1;
+-  const at=(row,key)=>clean(row[col(key)]),items=[];
++  // Validate cells using trimmed text, but keep the buyer's original string.
++  const at=(row,key)=>{
++    const value=row[col(key)];
++    return value?.trim() ? value : '';
++  };
++  const items=[];
+   for(const [index,row] of rows.slice(h+1).entries()) {
+     if(row.length!==headers.length)throw new Error('boq_csv_column_mismatch');
+     const title=at(row,'name');if(!title)throw new Error('boq_item_name_missing');
+     const specification=at(row,'spec'),name=officialItemName(title,specification);
+-    const rawQty=at(row,'quantity').replace(/,/g,'');
++    const rawQty=at(row,'quantity').trim().replace(/,/g,'');
+     if(rawQty&&!/^\d+(?:\.\d+)?$/.test(rawQty))throw new Error('boq_quantity_ambiguous');
+     // Row identity preserves repeated item numbers for separate consignees.
+     items.push({item_key:`${sourceUrl}#row=${index+1}`,item_number:at(row,'number')||String(index+1),name,quantity:rawQty?Number(rawQty):null,unit:at(row,'unit')||null,pack:at(row,'pack')||null,pvms:at(row,'pvms')||null,niv:at(row,'niv')||null,specification:specification||null,source_url:sourceUrl,source_hash:hash});

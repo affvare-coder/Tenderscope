@@ -1,0 +1,21 @@
+--- a/worker/gem.mjs
++++ b/worker/gem.mjs
+@@ -126,6 +126,9 @@
+ }
+ 
+ const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
++// Exact clinical categories found in the independent buyer-register sample.
++const clinicalEquipment = /\b(?:human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
++const pcaPumpCategory = /^PCA pump(?:\s*\((?:V\d+|Q[1-4])\))*$/i;
+ const clinicalContext = /\b(?:dental|oral|amalgam|endodontic|prosthodontic|orthodontic|medical|surgical|clinical|diagnostic|pharmaceutical|pharma|medicines?|drugs?|patients?|nitrile|examination|sterile|sutures?|catheter|gauze|bandage|anaesthetic|anesthetic|PVMS\s*[:\-]?\s*\d+)\b/i;
+ const definiteGoods = /\b(?:chair|autoclave|equipment|materials?|consumables?|expendables?|instruments?|mask|gloves?|gown|medicine|tablet|capsule|reagent|supplies|inject|syringe|burs?|implant|catheter|scalpel|forceps|apparatus|device|machine|monitor|kit|unit|bed|trolley|wheelchair|drug)\b/i;
+ 
+@@ -177,7 +180,7 @@
+     }
+     const hits = terms.filter(term => matchesTerm(segment, term));
+     const strong = hits.filter(term => !ambiguous.has(words(term)));
+-    const specific = specificHealthcare.test(segment);
++    const specific = specificHealthcare.test(segment) || clinicalEquipment.test(segment) || pcaPumpCategory.test(clean(segment));
+     const context = clinicalContext.test(segment);
+     const pvms = /\bPVMS\s*[:\-]?\s*[A-Z]?\d{4,}\b/i.test(segment);
+     // A service labelled dental/medical does not become a goods procurement.
