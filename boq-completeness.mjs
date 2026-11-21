@@ -19,6 +19,15 @@ const referenceOnly=v=>/^(?:as\s+per|refer\s+to|see)\s+(?:the\s+)?(?:specificati
 
 // N must come from an independent original GeM bid/schedule count or BOQ count,
 // with a verifiable source-page reference and an available matching file hash.
+export function attachmentNotes(item){
+ if(!item.spec_url)return [];
+ return [
+  item.buyer_condition && 'Buyer compliance condition: '+item.buyer_condition,
+  item.source_question && 'Buyer clarification needed: '+item.source_question,
+  Number.isInteger(item.spec_page) && 'Buyer specification, page '+item.spec_page+', row '+item.item_number
+ ].filter(Boolean);
+}
+
 export function verifiedExpectedCount(evidence,documents=[]){
  if(!evidence||!countInt(evidence.count)||evidence.verified!==true
     ||!['official_bid_pdf','official_boq_csv'].includes(evidence.source_type)
@@ -49,13 +58,15 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
   if(!validQty(item.quantity)||unknown(item.unit)||unknown(item.specification)||referenceOnly(item.specification)){incomplete++;continue;}
   // SHA-proven document association is not a full-text/specification proof.
   // No legacy row gets counted in K without an independent parameter check.
-  if(item.specification_verified!==true&&item.specs_verified!==true){
+  if(item.source_question || (item.specification_verified!==true&&item.specs_verified!==true)){
    specsUnconfirmed++;incomplete++;continue;
   }
   verified.push(item);
  }
  const count=verified.length;
- const complete=expected!==null&&count===expected&&incomplete===0&&specsUnconfirmed===0;
+ const pendingReview=expectedCountEvidence?.full_review_pending===true;
+ const complete=expected!==null&&count===expected&&incomplete===0&&specsUnconfirmed===0&&!pendingReview;
+ if(pendingReview && count===expected)issues.push('The full attachment set still needs final reconciliation');
  const state=complete?'Complete':count===0?'Unverified':expected===null?'Extracted':'Partial';
  if(expected===null)issues.push('Official expected item count has not been independently verified');
  if(anonymous)issues.push(anonymous+' anonymous schedule label(s) lack product identity');
