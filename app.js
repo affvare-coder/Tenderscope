@@ -53,7 +53,7 @@ function deadlineTime(t) {
   return time(t.deadline);
 }
 const hrs = t => deadlineTime(t) === null ? null : (deadlineTime(t) - Date.now()) / 36e5;
-const money = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 'Not yet verified';
+const money = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 'Not yet verified';
 const haystack = t => [t.bid_number, t.title, t.buyer, t.location, t.category, t.subcategory, t.pvms, ...list(t.matched_keywords),...list(S.products.get(t.id)?.item_names)].filter(Boolean).join(' ').toLowerCase();
 const defence = t => !!t.defence || /army|navy|air force|dg armed|defence|military/i.test(`${t.buyer || ''} ${t.title || ''}`);
 const deadline = t => exactDeadline(t) ? stamp(t.deadline) : `${formatDate(t.closing_date || t.deadline)} · time pending`;
@@ -289,14 +289,21 @@ function locationPanel(t) {
  const evidence=t.location_evidence||{},verified=evidence.verification==='OFFICIAL_FACT';
  return `<section class="detail-section location-evidence"><h3>Delivery location</h3><p><strong>${esc(t.location||'Not recorded')}</strong></p><p class="section-note">${verified?'Official location field checked':'Location needs verification against the official delivery details'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
 }
-function productsPanel(items,documents=[]) {
+function productsPanel(items,documents=[],bid=null) {
+ const completeness=typeof window!=='undefined'&&window.TenderScopeDocs?.assessBoqCompleteness
+  ? window.TenderScopeDocs.assessBoqCompleteness({items,documents,expectedCountEvidence:bid?.expected_item_count_evidence||null})
+  : null;
+ const note=completeness
+  ? '<p class="section-note" role="status"><strong>BOQ completeness: '+esc(completeness.label)+'</strong>. '+(completeness.ready?'Official item count and source specifications reconciled.':'Final compliance sign-off is blocked until full BOQ verification.')+'</p>'
+  : '<p class="section-note">BOQ completeness unverified. Official expected item count has not been reconciled.</p>';
+
  const specifications=documents.filter(d=>d.availability!=='removed'&&officialUrl(d.official_url)&&(/\/OrderItem\/BoqDocument\//i.test(d.official_url)||/^(?:specification|specs?)$/i.test(d.kind)));
  const links=[...new Set(specifications.map(d=>d.official_url))];
  const attachmentNote=links.length&&items.some(i=>/^\s*(as per|see|refer to)\b/i.test(i.specification||''))?'<p class="section-note">Some rows refer to a separate buyer specification. '+links.map((url,i)=>sourceLink(url,'Open buyer attachment '+(i+1)+' ↗','timeline-source')).join(' · ')+'</p>':'';
  const current=items.filter(item=>item.is_current!==false && !isAnonymousScheduleLabel(item.name) && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
- if(!current.length)return '<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
+ if(!current.length)return note+'<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
- return `<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
+ return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
 }
 const reviewLabels = {
   item:'Buyer item and quantity', consignee:'Consignee', bidder:'Bidder turnover', oem:'OEM turnover',
@@ -443,24 +450,31 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
   const isEstimate = valueLabel(t) === 'TenderScope planning estimate';
-  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn primary" data-save-bid="${esc(t.bid_number)}">Save bid</button><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Open official GeM bid ↗')}</div><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section bidder-checks"><h3>Go / No-Go eligibility</h3><div id="detailBuyerReview" aria-live="polite">Checking buyer evidence…</div></section>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Loading product rows…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Ask AI · Your next step</h3><p>Make a compliance sheet, match OEMs, review restrictive clauses, draft a buyer clarification or prepare a justified representation. Start with this bid—no lengthy form.</p><button class="btn primary" data-action="ai" data-id="${esc(t.id)}">✦ Choose an action</button><a class="btn ghost" href="/assets/sample-dental-compliance.docx" download>Sample Word draft ↓</a><button class="btn" data-action="prepare-docs" data-id="${esc(t.id)}">Edit Word compliance draft</button></section>`;
+  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn primary" data-save-bid="${esc(t.bid_number)}">Save bid</button><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Open official GeM bid ↗')}</div><p id="detailPackWarning" class="section-note" role="status"></p><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section bidder-checks"><h3>Go / No-Go eligibility</h3><div id="detailBuyerReview" aria-live="polite">Checking buyer evidence…</div></section>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Loading product rows…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Ask AI · Your next step</h3><p>Make a compliance sheet, match OEMs, review restrictive clauses, draft a buyer clarification or prepare a justified representation. Start with this bid—no lengthy form.</p><button class="btn primary" data-action="ai" data-id="${esc(t.id)}">✦ Choose an action</button><a class="btn ghost" href="/assets/sample-dental-compliance.docx" download>Sample Word draft ↓</a><button class="btn" data-action="prepare-docs" data-id="${esc(t.id)}">Edit Word compliance draft</button></section>`;
   Object.entries(priorPanels).forEach(([key,html])=>{if(html)$(key).innerHTML=html;});
   if(versionsOpen)$('detailVersions').closest('details').open=true;
   if(changesOpen)$('detailTimeline').closest('details').open=true;
   if (!$('bidDialog').open) $('bidDialog').showModal();
   $('bidDialog').scrollTop=scrollTop;
   if (updateLocation) history.replaceState(null, '', `${location.pathname}${location.search}#bid=${encodeURIComponent(t.bid_number)}`);
+  const packSource=currentPackSource(id);
   const responses = await Promise.allSettled([
-    docs(id),
+    packSource.then(source=>source.documents),
     api(`/tender_events?select=event_code,event_type,detected_at,previous_value,new_value,source_url&tender_id=eq.${encodeURIComponent(id)}&order=detected_at.desc,id.desc&limit=24`),
     api(`/tender_document_versions?select=version_no,snapshot,detected_at&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc&limit=12`),
-    pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`),
+    packSource,
     api(`/current_tender_buyer_reviews?select=*&tender_id=eq.${encodeURIComponent(id)}&limit=1`)
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
   $('detailBuyerReview').innerHTML=responses[4].status==='fulfilled'?bidderChecks(responses[4].value[0]):'<p class="section-note">Eligibility evidence could not load. Check the official bid PDF.</p>';
-  if(responses[3].status==='fulfilled')S.itemRows.set(id,responses[3].value);
-  $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(responses[3].value,responses[0].value):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
+  const detailSource=responses[3].status==='fulfilled'?responses[3].value:null;
+  if(detailSource){
+    S.docs.set(id,detailSource.documents);
+    S.itemRows.set(id,detailSource.items);
+    const warning=previousPackWarning(packHistoryKey(t.bid_number,AUTH.session?.user?.id),detailSource);
+    if(warning)$('detailPackWarning').textContent=warning;
+  }
+  $('detailProducts').innerHTML=responses[3].status==='fulfilled'&&responses[0].status==='fulfilled'?productsPanel(detailSource.items,detailSource.documents,{expected_item_count_evidence:detailSource.expected}):'<p class="section-note">Product rows could not load. Reopen the bid to retry; official documents remain available.</p>';
   $('detailFeedback').textContent = '';
   [['detailDocuments', docPanel], ['detailTimeline', timelinePanel], ['detailVersions', versionsPanel]].forEach(([target, renderer], index) => {
     const result = responses[index];
@@ -475,13 +489,53 @@ function askBid(id) {
   const text = `You are TenderScope's neutral GeM healthcare bid research assistant for any bidder company. Do not assume the participant is Affix Healthcare and do not ask for company files to research the bid. For ${t.bid_number} (${t.title}), buyer ${t.buyer||'unknown'}, location ${t.location||'unverified'}, closing ${deadline(t)}, examine current official bid, BOQ, specification-view file, ATC and corrigenda from these official links:\n${links.join('\n')||'No official attachment link recorded; retrieve the official bid by number.'}\nKnown BOQ preview (not a substitute for full specs): ${productContext?.item_names?.join('; ')||'Products processing'}.\nDeliver FIRST a concise table for EACH actual BOQ item: item name, buyer specification VERBATIM with source/page, quantity/pack, OEM manufacturer, exact product/model/SKU, match class (EXACT/PROBABLE/PARTIAL/NO VERIFIED MATCH), matched and missing technical parameters, HSN with classification basis/confidence, manufacturer location, verified Indian OEM or authorised distributor contact (phone/email/website), and evidence links. Search OEM catalogues and official manufacturer sources; do not invent product models, HSN or contacts. Mark unverified fields clearly. Then list any restrictive buyer conditions that could justify a representation, distinguishing facts from legal analysis, and offer a concise respectful draft representation only when justified. Keep the answer compact, with no generic bid overview or document-upload questionnaire. Bidder details are optional and only needed to personalise a final representation.`;
   window.open('https://chatgpt.com/?q=' + encodeURIComponent(text), '_blank', 'noopener,noreferrer');
 }
+async function currentPackSource(id,summary=false) {
+  const data=await api(`/rpc/bid_pack_source?p_tender_id=${encodeURIComponent(id)}&p_summary=${summary}`);
+  if(!data?.version || (!summary && (!data.bid || !Array.isArray(data.items) || !Array.isArray(data.documents))))throw Error('Current buyer documents could not be verified. Refresh the bid and try again.');
+  if(!summary){
+    const keys=new Set((data.certified_rows||[]).map(row=>row.key));
+    data.items=data.items.map(item=>({...item,specification_verified:keys.has(item.item_key),specs_verified:false}));
+  }
+  return data;
+}
+function packHistoryKey(bid,owner){
+  return 'tenderscope.last-pack.v1.'+encodeURIComponent(owner||'guest')+'.'+bid;
+}
+function previousPackWarning(key,current) {
+  try {
+    const old=JSON.parse(localStorage.getItem(key));
+    if(!old?.version||old.version===current.version)return '';
+    const changes=[];
+    if(old.deadline!==current.deadline)changes.push('closing time');
+    const kinds=new Set([...(old.document_versions||[]),...(current.document_versions||[])].map(d=>d[0]));
+    for(const kind of kinds){
+      const ofKind=rows=>rows.filter(d=>d[0]===kind);
+      if(JSON.stringify(ofKind(old.document_versions||[]))!==JSON.stringify(ofKind(current.document_versions||[])))changes.push(kind.toUpperCase()+' document');
+    }
+    return 'An earlier pack on this device needs review. '+(changes.length?'Changed since export: '+changes.join(', ')+'. ':'The bid or its verified evidence has changed. ')+'Check the latest official documents before using that pack.';
+  } catch{return '';}
+}
+function rememberPack(key,source) {
+  try {localStorage.setItem(key,JSON.stringify({version:source.version,deadline:source.deadline,document_versions:source.document_versions}));}catch{/* Storage may be disabled in a guest browser. */}
+}
 async function openDocumentStudio(id,tab) {
- const bid=byId(id);if(!bid)return;
+ if(!byId(id))return;
  try {
   if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
-  const [documents,items]=await Promise.all([docs(id),S.itemRows.has(id)?Promise.resolve(S.itemRows.get(id)):pages(`/tender_items?select=*&tender_id=eq.${encodeURIComponent(id)}&is_current=eq.true&order=item_key.asc`)]);
-  const orderedItems=items.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true})||String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
-  await window.TenderScopeDocs.open({bid,tab,documents,analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:AUTH.session?.user?.id,download:async documentId=>{
+  const owner=AUTH.session?.user?.id;
+  const source=await currentPackSource(id);
+  if (S.selected?.id!==id || owner!==AUTH.session?.user?.id || !$('bidDialog').open) return;
+  const {bid,documents,items}=source;
+  const orderedItems=items.sort((a,b)=>String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
+  const key=packHistoryKey(bid.bid_number,owner);
+  await window.TenderScopeDocs.open({bid,tab,documents,sourceItems:orderedItems,expectedCountEvidence:source.expected,
+    sourceVersion:source.version,previousPackWarning:previousPackWarning(key,source),
+    checkExportSource:async()=>{
+      const latest=await currentPackSource(id,true);
+      if(latest.version!==source.version)throw Error('The bid or buyer documents changed. Reopen the bid and review the current requirements before exporting.');
+    },
+    rememberExport:()=>rememberPack(key,source),
+    analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:owner,download:async documentId=>{
    const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
    const r=await fetch(`${PROJECT_URL}/functions/v1/tenderscope-download`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({document_id:documentId}),signal:AbortSignal.timeout(45000)});
    if(!r.ok){const e=await r.json().catch(()=>({}));throw Error(e.error||'Official ATC download failed.');}return new Uint8Array(await r.arrayBuffer());

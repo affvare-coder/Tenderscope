@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {PDFDocument,PDFTextField} from 'pdf-lib';
+import {assessBoqCompleteness} from '../boq-completeness.mjs';
 import {buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate,BID_AI_ACTIONS,BID_AI_SECONDARY_ACTIONS,publicBidActionAIUrl,officialDocumentRecords} from '../document-workflow.mjs';
 
 const master=readFileSync(new URL('../assets/compliance-atc-master.txt',import.meta.url),'utf8');
@@ -28,13 +29,13 @@ function harness(){
  class BrowserURL extends URL{static createObjectURL(data){const id='blob:'+blobs.size;blobs.set(id,data);return id;}static revokeObjectURL(){}}
  const report=data=>{calls.push({kind:'verification',data});return {ready:false,status:'DRAFT_BLOCKED_NOT_FOR_UPLOAD',blockers:['Review pending']};};
  const renderer=kind=>async data=>{calls.push({kind,data});return new Blob(['fixture-draft']);};
- const context=vm.createContext({document,window:{},navigator:{clipboard:{writeText:async text=>{copied=text;}}},location:{origin:'https://tenderscope-healthcare.netlify.app'},URL:BrowserURL,Blob,crypto:webcrypto,Uint8Array,PDFDocument,PDFTextField,structuredClone,fetch:async()=>new Response(master),setTimeout(){},pdfjs:{GlobalWorkerOptions:{},getDocument(){return {promise:Promise.resolve({numPages:1,async destroy(){},async getPage(){return {getViewport:()=>({width:400,height:600}),render:()=>({promise:Promise.resolve(),cancel(){}}),getTextContent:async()=>({items:[]})};}})};}},verifiedItems:items=>items,complianceDocx:renderer('compliance'),compliancePdf:renderer('pdf'),fillAnnexures:renderer('overlay'),atcAcceptanceDocx:renderer('atc'),editableAnnexureDocx:renderer('annexure'),documentVerification:report,buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate,BID_AI_ACTIONS,BID_AI_SECONDARY_ACTIONS,publicBidActionAIUrl,officialDocumentRecords});
+ const context=vm.createContext({document,window:{},navigator:{clipboard:{writeText:async text=>{copied=text;}}},location:{origin:'https://tenderscope-healthcare.netlify.app'},URL:BrowserURL,Blob,crypto:webcrypto,Uint8Array,PDFDocument,PDFTextField,structuredClone,fetch:async()=>new Response(master),setTimeout(){},pdfjs:{GlobalWorkerOptions:{},getDocument(){return {promise:Promise.resolve({numPages:1,async destroy(){},async getPage(){return {getViewport:()=>({width:400,height:600}),render:()=>({promise:Promise.resolve(),cancel(){}}),getTextContent:async()=>({items:[]})};}})};}},verifiedItems:items=>items,complianceDocx:renderer('compliance'),compliancePdf:renderer('pdf'),fillAnnexures:renderer('overlay'),atcAcceptanceDocx:renderer('atc'),editableAnnexureDocx:renderer('annexure'),documentVerification:report,buildDocumentInstructions,publicDocumentAIUrl,buildAnnexureTemplate,BID_AI_ACTIONS,BID_AI_SECONDARY_ACTIONS,publicBidActionAIUrl,officialDocumentRecords,assessBoqCompleteness});
  vm.runInContext(source,context);
  const options=(overrides={})=>({userId:'member-a',bid:{id:'bid-a',bid_number:'GEM/2026/B/TEST',title:'Synthetic bid',buyer:'Synthetic buyer',source_url:'https://bidplus.gem.gov.in/showbidDocument/123'},items:[{item_key:'one',source_hash:'hash-a',name:'Test product',specification:'Full buyer specification',quantity:2}],documents:[{id:'doc-a',content_hash:'hash-a',version_no:1,kind:'ATC',official_url:'https://bidplus.gem.gov.in/a.pdf'}],...overrides});
  return {node,dialog,calls,downloads,offers,uploads,assetUploads,options,tab:key=>tabs.get(key),open:o=>context.window.TenderScopeDocs.open(o),clear:()=>context.window.TenderScopeDocs.clear(),click:id=>node(id).onclick(),copied:()=>copied};
 }
 const image=()=>({size:100,type:'image/png',arrayBuffer:async()=>new Uint8Array([137,80,78,71]).buffer});
-function completeProfile(ui){ui.node('studio_company').value='Private Fixture Company';ui.node('studio_signatory').value='Private Signatory';ui.node('studio_place').value='Fixture City';ui.node('studio_licences').value='Private licence 42';}
+function completeProfile(ui){ui.node('studioIncompleteDraft').checked=true;ui.node('studio_company').value='Private Fixture Company';ui.node('studio_signatory').value='Private Signatory';ui.node('studio_place').value='Fixture City';ui.node('studio_licences').value='Private licence 42';}
 
 test('actual instruction handlers use supported kinds and exclude private profile by default and from all URLs',async()=>{
  const ui=harness();await ui.open(ui.options({tab:'annexure'}));completeProfile(ui);
@@ -93,4 +94,39 @@ test('missing product rows never imply complete source extraction',async()=>{
  assert.match(ui.dialog.innerHTML,/Product details are not available yet/);
  assert.match(ui.dialog.innerHTML,/confirm that they cover the complete official BOQ/);
  assert.doesNotMatch(ui.dialog.innerHTML,/fully analyzed|complete extraction|0 verified product rows/i);
+});
+
+test('an incomplete BOQ requires fresh acknowledgment for each opened draft',async()=>{
+ const ui=harness();
+ await ui.open(ui.options());
+ for(const id of ['studioDocx','studioCompliancePdf','studioATCWord','studioAnnexureWord','studioAnnexure']){
+  await ui.click(id);
+  assert.match(ui.node('studioStatus').textContent,/incomplete-draft acknowledgment/);
+ }
+ assert.equal(ui.downloads.length,0);
+ completeProfile(ui);
+ await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);
+ await ui.open(ui.options({bid:{id:'next',bid_number:'GEM/TEST/2'}}));
+ await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);
+});
+
+test('direct draft, annexure and general actions open the requested workspace',async()=>{
+ for(const [tab,expected] of [['compliance','compliance'],['annexure','annexure'],['overview','overview'],['unknown','overview']]){
+  const ui=harness();
+  await ui.open(ui.options({tab}));
+  assert.equal(ui.tab(expected).attributes['aria-pressed'],'true');
+  assert.equal(ui.node('studio_'+expected).hidden,false);
+ }
+});
+
+test('a changed source blocks a generated pack before download and never records an export',async()=>{
+ const ui=harness();let exports=0;
+ await ui.open(ui.options({checkExportSource:async()=>{throw Error('Buyer documents changed');},rememberExport:()=>exports++}));
+ completeProfile(ui);await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,0);assert.equal(exports,0);assert.match(ui.node('studioStatus').textContent,/documents changed/);
+ await ui.open(ui.options({checkExportSource:async()=>{},rememberExport:()=>exports++}));
+ completeProfile(ui);await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);assert.equal(exports,1);
 });

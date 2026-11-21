@@ -27,3 +27,13 @@ test('guests can open official sources and member downloads remain distinct',()=
   ctx.state.session={};assert.match(ctx.docs([doc]),/Download a copy/);
   assert.doesNotMatch(ctx.docs([{...doc,availability:'removed'}]),/href=/);
 });
+
+test('a previous pack is tied to the bidder and the saved source versions',()=>{
+ const memory=new Map(),area=vm.createContext({Map,Set,JSON,encodeURIComponent,localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)}});
+ vm.runInContext(app.slice(app.indexOf('function packHistoryKey('),app.indexOf('async function openDocumentStudio('))+'\nthis.key=packHistoryKey;this.save=rememberPack;this.warn=previousPackWarning;',area);
+ const key=area.key('B/1','participant-a'),old={version:'a',deadline:'2026-11-21',document_versions:[['atc','url',1,'hash','available']]};
+ area.save(key,old);assert.equal(area.warn(key,old),'');
+ const updated={...old,version:'b',deadline:'2026-11-22',document_versions:[['atc','url',2,'hash2','available']]};
+ assert.match(area.warn(key,updated),/closing time, ATC document/);
+ assert.equal(area.warn(area.key('B/1','participant-b'),updated),'');
+});

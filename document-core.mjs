@@ -1,4 +1,5 @@
 import {isAnonymousScheduleLabel} from './product-quality.mjs';
+import {assessBoqCompleteness} from './boq-completeness.mjs';
 import {PDFDocument,rgb} from 'pdf-lib';
 import {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,Header,Footer,ImageRun,PageNumber,WidthType,AlignmentType,VerticalAlign,PageOrientation,BorderStyle} from 'docx';
 
@@ -10,16 +11,16 @@ export function verifiedItems(items,documents){return items.filter(i=>i.is_curre
 export function validateProfile(profile){if(!clean(profile.company)||!clean(profile.signatory))throw Error('Enter the company name and authorised signatory.');}
 export function complianceRows(items,offers={}){
  if(!items.length)throw Error('Verified product rows are not available yet. Upload and verify the official BOQ first.');
- return items.map(i=>{const o=offers[i.item_key]||{};const requested=clean(o.response)||'NEEDS REVIEW';const supported=o.verified===true&&clean(o.offer)&&clean(o.evidence);return {...i,offer:clean(o.offer),response:/^yes$/i.test(requested)&&!supported?'NEEDS REVIEW':requested,evidence:clean(o.evidence),photo:o.photo,offerVerified:supported,photoVerified:o.photoVerified===true,photoRequired:o.photoRequired!==false};});
+ return items.map(i=>{const o=offers[i.item_key]||{};const requested=clean(o.response)||'NEEDS REVIEW';const supported=i.specification_verified===true && o.verified===true && !!clean(o.offer) && !!clean(o.evidence);return {...i,offer:clean(o.offer),response:/^yes$/i.test(requested)&&!supported?'NEEDS REVIEW':requested,evidence:clean(o.evidence),photo:o.photo,offerVerified:supported,photoVerified:o.photoVerified===true,photoRequired:o.photoRequired!==false};});
 }
 function rowBlockers(i){const b=[];if(!clean(i.name))b.push('Missing buyer item name');if(isAnonymousScheduleLabel(i.name))b.push('Buyer item description not verified');if(!clean(i.specification))b.push('Missing full buyer specification');if(i.quantity==null)b.push('Missing buyer quantity');if(!clean(i.source_url)||!clean(i.source_hash))b.push('Current official item provenance missing');if(!clean(i.offer))b.push('Offered OEM, product and pack not selected');if(!i.offerVerified)b.push('Offer evidence not verified');if(!/^yes$/i.test(i.response))b.push('Compliance response requires review');if(i.photoRequired&&(!i.photo||!i.photoVerified))b.push('Matching approved product photograph not verified');return b;}
 function release(review={},blockers=[]){return review.confirmed===true&&review.sourceVerified===true&&review.rendered===true&&review.executionAuthorized===true&&!blockers.length&&!(review.blockers||[]).length;}
-export function documentVerification({bid,profile,items=[],offers={},images={},review={}}){
- const rows=items.length?complianceRows(items,offers):[];const blockers=[...(review.blockers||[])];if(!rows.length)blockers.push('Verified buyer item rows are unavailable');if(!clean(profile?.company)||!clean(profile?.signatory))blockers.push('Participant company and authorised signatory required');
+export function documentVerification({bid,profile,items=[],sourceItems=items,documents=[],expectedCountEvidence=null,offers={},images={},review={}}){
+ const rows=items.length?complianceRows(items,offers):[];const boq=assessBoqCompleteness({items:sourceItems,documents,expectedCountEvidence});const blockers=[...(review.blockers||[])];if(!rows.length)blockers.push('Verified buyer item rows are unavailable');if(!boq.ready)blockers.push('Complete official BOQ reconciliation is required before final sign-off: '+boq.label+'; '+boq.issues.join('; '));if(items.length!==boq.verified_item_count)blockers.push('Prepared technical offer does not contain exactly the source-verified item set');if(!clean(profile?.company)||!clean(profile?.signatory))blockers.push('Participant company and authorised signatory required');
  const itemChecks=rows.map(i=>({item_key:i.item_key,item_number:i.item_number,name:i.name,source_url:i.source_url,source_hash:i.source_hash,response:i.response,blockers:rowBlockers(i)}));
  for(const i of itemChecks)for(const b of i.blockers)blockers.push(`${i.item_number||i.item_key}: ${b}`);
  if(review.sourceVerified!==true)blockers.push('Complete current official source record has not been confirmed');if(review.confirmed!==true)blockers.push('Participant content review is pending');if(review.rendered!==true)blockers.push('Every final DOCX page has not been rendered and inspected');if(review.executionAuthorized!==true)blockers.push('Execution has not been authorised');
- const ready=release(review,blockers);return {bid_number:bid.bid_number,status:ready?'PREPARED_REVIEWED':'DRAFT_BLOCKED_NOT_FOR_UPLOAD',item_count:rows.length,ready,signature_applied:ready&&Boolean(images.signature),stamp_applied:ready&&Boolean(images.stamp),blockers:[...new Set(blockers)],items:itemChecks,limitations:['Local generation does not automatically inspect rendered DOCX pages.','An inserted signature image is not a digital signature or proof of execution.']};
+ const ready=release(review,blockers);return {bid_number:bid.bid_number,status:ready?'PREPARED_REVIEWED':'DRAFT_BLOCKED_NOT_FOR_UPLOAD',item_count:rows.length,boq:{state:boq.state,expected_item_count:boq.expected_item_count,verified_item_count:boq.verified_item_count,issues:boq.issues},ready,signature_applied:ready&&Boolean(images.signature),stamp_applied:ready&&Boolean(images.stamp),blockers:[...new Set(blockers)],items:itemChecks,limitations:['Local generation does not automatically inspect rendered DOCX pages.','An inserted signature image is not a digital signature or proof of execution.']};
 }
 function imageSize(data){
  const b=new Uint8Array(data.bytes);if(data.width>0&&data.height>0)return [data.width,data.height];
@@ -46,15 +47,17 @@ function packDoc(bid,title,sections){return Packer.toBlob(new Document({creator:
 const border={style:BorderStyle.SINGLE,size:4,color:'D9D9D9'};
 function cell(children,width,header=false){return new TableCell({width:{size:width,type:WidthType.DXA},margins:{top:90,bottom:90,left:90,right:90},verticalAlign:VerticalAlign.CENTER,shading:header?{fill:'E8EDF2'}:undefined,borders:{top:border,bottom:border,left:border,right:border},children});}
 function specFragments(value){let rest=text(value);const parts=[];while(rest.length>1000){let cut=rest.lastIndexOf(' ',1000);if(cut<500)cut=1000;else cut++;parts.push(rest.slice(0,cut));rest=rest.slice(cut);}parts.push(rest);return parts;}
-export async function complianceDocx({bid,profile,items,offers={},images={},review={}}){
- validateProfile(profile);const rows=complianceRows(items,offers),verification=documentVerification({bid,profile,items,offers,images,review}),ready=verification.ready;
+export async function complianceDocx({bid,profile,items,sourceItems=items,documents=[],expectedCountEvidence=null,offers={},images={},review={}}){
+ validateProfile(profile);const rows=complianceRows(items,offers),verification=documentVerification({bid,profile,items,sourceItems,documents,expectedCountEvidence,offers,images,review}),ready=verification.ready;
+ const coverage=verification.boq;
+ const coverageNote=ready?[]:[p(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. This draft contains ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`,true)];
  const displayRows=rows.flatMap(i=>specFragments(i.specification).map((specification,index)=>({...i,specification,continuation:index>0})));
  const widths=[1800,2850,2400,1600,1000],headings=['Item and quantity','Exact buyer specification','Offered OEM product and pack','Product photograph','Status'];
  const table=new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:widths,rows:[new TableRow({tableHeader:true,children:headings.map((h,j)=>cell([p(h,true)],widths[j],true))}),...displayRows.map(i=>new TableRow({cantSplit:true,children:[
  cell(lines(`${i.continuation?'Continued item ':''}${i.item_number||''}. ${i.name}\nQuantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?'\nPack: '+i.pack:''}${i.pvms||i.niv?'\nPVMS/NIV: '+(i.pvms||i.niv):''}${i.consignee?'\nConsignee: '+i.consignee:''}`),widths[0]),
  cell(lines(i.specification||'Source specification pending'),widths[1]),cell(lines(i.offer||'Offer selection pending'),widths[2]),
  cell(i.photo&&i.photoVerified?[new Paragraph({children:[image(i.photo,90,88)],alignment:AlignmentType.CENTER})]:[p('Photo review pending')],widths[3]),cell([p(i.response,true)],widths[4])]}))]});
- const intro=[p('To,'),p('The Competent Authority',true),...lines([bid.buyer,bid.buyer_address].filter(Boolean).join('\n')),p(`Subject: Technical offer for ${bid.title||bid.bid_number}`,true),p('We submit the following item-wise technical offer against the buyer requirements.'),table,...closing(profile,images,ready)];
+ const intro=[p('To,'),p('The Competent Authority',true),...lines([bid.buyer,bid.buyer_address].filter(Boolean).join('\n')),p(`Subject: Technical offer for ${bid.title||bid.bid_number}`,true),p('We submit the following item-wise technical offer against the buyer requirements.'),...coverageNote,table,...closing(profile,images,ready)];
  return packDoc(bid,'Technical Offer',[ordinarySection({bid,profile,images},intro,ready)]);
 }
 export async function atcAcceptanceDocx({bid,profile,clauses=[],amendments=[],acceptanceAuthorized=false,images={},review={}}){
@@ -89,12 +92,13 @@ export async function editableAnnexureDocx({bid,profile,template,images={},revie
  return packDoc(bid,template.title,[{properties:{page:{size,margin:margins}},...pageParts({bid,profile,images,ready,branding:template.allowLetterhead===true}),children}]);
 }
 function wrap(font,value,size,width){const out=[];for(const line of text(value).split('\n')){let current='';for(const word of line.split(/\s+/)){const next=current?current+' '+word:word;if(current&&font.widthOfTextAtSize(next,size)>width){out.push(current);current=word;}else current=next;}out.push(current);}return out;}
-export async function compliancePdf({bid,profile,items,offers={},images={},fontBytes,review={}}){
+export async function compliancePdf({bid,profile,items,sourceItems=items,documents=[],expectedCountEvidence=null,offers={},images={},fontBytes,review={}}){
  const {default:fontkit}=await import('@pdf-lib/fontkit');
- validateProfile(profile);const rows=complianceRows(items,offers),ready=documentVerification({bid,profile,items,offers,images,review}).ready,doc=await PDFDocument.create();doc.registerFontkit(fontkit);const font=await doc.embedFont(fontBytes,{subset:true});let page,y;
+ validateProfile(profile);const rows=complianceRows(items,offers),verification=documentVerification({bid,profile,items,sourceItems,documents,expectedCountEvidence,offers,images,review}),ready=verification.ready,doc=await PDFDocument.create();doc.registerFontkit(fontkit);const font=await doc.embedFont(fontBytes,{subset:true});let page,y;
  const newPage=()=>{page=doc.addPage([595.28,841.89]);y=672;};
  const put=(v,size=10)=>{for(const line of wrap(font,v,size,505)){if(y<130)newPage();page.drawText(line,{x:45,y,size,font});y-=size+5;}};
  newPage();if(clean(profile.address))put('Registered address: '+profile.address);const contact=[['Email',profile.email],['Phone',profile.phone]].filter(([,v])=>clean(v)).map(([k,v])=>`${k}: ${v}`).join(' | ');if(contact)put(contact);if(identity(profile))put(identity(profile),9);put('To, The Competent Authority');put(bid.buyer||'');put(`Technical offer for ${bid.title||bid.bid_number}`,12);y-=6;
+ if(!ready){const coverage=verification.boq;put(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. Draft includes ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`);}
  for(const i of rows){if(y<260)newPage();put(`${i.item_number||''}. ${i.name}`,12);put(`Quantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?' | Pack: '+i.pack:''}${i.pvms||i.niv?' | PVMS/NIV: '+(i.pvms||i.niv):''}`);if(i.consignee)put('Consignee: '+i.consignee);put('Buyer specification: '+(i.specification||'Source specification pending'));put('Offered OEM product and pack: '+(i.offer||'Offer selection pending'));put('Compliance: '+i.response);
   if(i.photo&&i.photoVerified){const im=await doc[i.photo.type==='png'?'embedPng':'embedJpg'](i.photo.bytes),s=fitImage(i.photo,115,82);if(y<130+s.height)newPage();page.drawImage(im,{x:45,y:y-s.height,width:s.width,height:s.height});y-=s.height+10;}else put('Product photograph review pending');y-=15;
  }
