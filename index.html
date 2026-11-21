@@ -29,8 +29,9 @@
     <div class="workspace-name"><span class="workspace-avatar" aria-hidden="true">H</span><div>Healthcare workspace<small>India · Government e-Marketplace</small></div><span aria-hidden="true" class="workspace-chevron">⌄</span></div>
     <nav id="viewTabs" class="view-tabs" aria-label="Opportunity views">
       <p class="nav-label">DISCOVER</p>
+      <button type="button" class="view-tab active" data-view="representation" aria-pressed="true">Representation active <span class="nav-count">—</span></button>
       <button type="button" class="view-tab" data-view="ready" aria-pressed="false">Verified BOQs <span class="nav-count">—</span></button>
-      <button type="button" class="view-tab active" data-view="allopen" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>All open bids <span class="nav-count">—</span></button>
+      <button type="button" class="view-tab" data-view="allopen" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>All open bids <span class="nav-count">—</span></button>
       <button type="button" class="view-tab" data-view="published24" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z"/></svg>Published · 24 hours <span class="nav-count">—</span></button>
       <button type="button" class="view-tab" data-view="published92" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z"/></svg>Published · 92 hours <span class="nav-count">—</span></button>
       <button type="button" class="view-tab" data-view="updated" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg>Updated bids <span class="nav-count">—</span></button>
@@ -64,7 +65,8 @@
     <main>
       <section class="page-intro" aria-labelledby="pageTitle"><div><div class="eyebrow"><span class="intro-line"></span>YOUR PROCUREMENT ADVANTAGE</div><h1 id="pageTitle">A clearer view of healthcare bids.</h1><p>Find healthcare bids, review buyer terms and prepare an editable compliance sheet.</p><a class="timeline-source" href="/assets/sample-dental-compliance.docx" download>Download sample Word draft ↓</a></div></section>
       <nav class="home-bid-views" aria-label="Homepage bid views">
-        <button type="button" data-home-view="allopen" aria-controls="opportunities" aria-pressed="true"><span>All bids</span><strong id="kpiLive">—</strong></button>
+        <button type="button" data-home-view="representation" aria-controls="opportunities" aria-pressed="true"><span>Representation active</span><strong id="kpiRepresentation">—</strong></button>
+        <button type="button" data-home-view="allopen" aria-controls="opportunities" aria-pressed="false"><span>All bids</span><strong id="kpiLive">—</strong></button>
         <button type="button" data-home-view="closing72" aria-controls="opportunities" aria-pressed="false"><span>Closing in 72 hours</span><strong id="kpiUrgent">—</strong></button>
         <button type="button" data-home-view="published24" aria-controls="opportunities" aria-pressed="false"><span>Published in 24 hours</span><strong id="kpiNewToday">—</strong></button>
         <button type="button" data-home-view="published92" aria-controls="opportunities" aria-pressed="false"><span>Published in 92 hours</span><strong id="kpiRecent">—</strong></button>

@@ -1,0 +1,191 @@
+--- a/worker/documents.mjs
++++ b/worker/documents.mjs
+@@ -1,3 +1,6 @@
++import {specificationTable} from './specification-table.mjs';
++import {officialAttachmentKind,annotationLabel} from './attachment-roles.mjs';
++import {readPage,pdfLines} from './representation.mjs';
+ import {parseProductTablePage} from './products.mjs';
+ /** Official GeM document retrieval. No caller-supplied destination is accepted by the HTTP handler. */
+ import {parseConsigneeLocations,mergeConsigneeLocations} from './locations.mjs';
+@@ -15,14 +18,16 @@
+   } catch { return null; }
+ }
+ 
+-export function documentKind(url) {
++export function documentKind(url,label) {
++  const role=officialAttachmentKind(url,label);
++  if(role)return role;
+   const u = String(url).toLowerCase();
+   if (/showbiddocument\//.test(u)) return 'bid';
+   if (/boqlineitemsdocument|\.csv(?:[?#]|$)/.test(u)) return 'boq_csv';
+   if (/corrigendum|corrigenda/.test(u)) return 'corrigendum';
+   if (/specificationdocument|pqr_specs|product_specification/.test(u)) return 'specification';
+   if (/slafds|sla_upload_path|atc|aatc/.test(u)) return 'atc';
+-  if (/boqdocument/.test(u)) return 'boq_pdf';
++
+   return 'attachment';
+ }
+ 
+@@ -54,7 +59,7 @@
+   const links = [...annotations, ...[...text.matchAll(/https:\/\/[^\s<>"\])]+/g)].map(m => m[0])]
+     .map(a => typeof a === 'string' ? {url:a} : a)
+     .map(a => ({...a, url: officialDocumentUrl(a.url)})).filter(a => a.url && isBidAttachment(a.url));
+-  const documents = [...new Map(links.map(a => [a.url, {...a, kind:documentKind(a.url)}])).values()];
++  const documents = [...new Map(links.map(a => [a.url, {...a, kind:documentKind(a.url,a.label)}])).values()];
+   const turnover = label => {
+     const value = first(new RegExp(`${label}[^\\n]{0,140}?(?:\\n|₹|INR|Rs\\.?|\\))\\s*([\\d,]+(?:\\.\\d+)?)`, 'i'), text);
+     if (value == null) return null;
+@@ -126,21 +131,27 @@
+ }
+ 
+ /** Extract metadata and a resumable annotation chunk. Large bids are not truncated. */
+-export async function parsePdfBytes(bytes,{pdfjs,workerModule,maxTextPages=5,startAnnotationPage=1,maxAnnotationPages=30}={}) {
++export async function parsePdfBytes(bytes,{pdfjs,workerModule,maxTextPages=5,startAnnotationPage=1,maxAnnotationPages=30,reviewUrl=null}={}) {
+   if(!pdfjs) throw new Error('pdf_parser_dependency_missing');
+   if(workerModule) globalThis.pdfjsWorker=workerModule;
+   const task=pdfjs.getDocument({data:bytes,isEvalSupported:false,useSystemFonts:false,disableFontFace:true,useWorkerFetch:false});
+   const pdf=await task.promise;
+   try {
+-    const texts=[],annotations=[],locations=[],productItems=[];let productReview=false;
++    const reviewPages=[],texts=[],annotations=[],locations=[],productItems=[];let productReview=false;
+     if(!Number.isSafeInteger(pdf.numPages)||pdf.numPages<1)throw new Error('pdf_page_count_invalid');
+     const start=Math.max(1,Math.min(pdf.numPages,startAnnotationPage));
+     const end=Math.min(pdf.numPages,start+maxAnnotationPages-1);
+     const pages=[...new Set([...Array.from({length:Math.min(pdf.numPages,maxTextPages)},(_,i)=>i+1),...Array.from({length:end-start+1},(_,i)=>start+i)])].sort((a,b)=>a-b);
+     for(const n of pages) {
+-      const page=await pdf.getPage(n);
++      const page=await pdf.getPage(n);let tokens=[];
+       if(n<=maxTextPages || (n>=start&&n<=end)) {
+-        const content=await page.getTextContent();
++        const content=await page.getTextContent();tokens=content.items;
++        if(reviewUrl&&n>=start&&n<=end){
++          const role=documentKind(reviewUrl);
++          const evidence=readPage(n,pdfLines(content.items),role!=='bid');
++          if(role==='specification')evidence.spec_rows=specificationTable(content.items);
++          reviewPages.push(evidence);
++        }
+         if(n>=start&&n<=end){const table=parseProductTablePage(content.items,n);productItems.push(...table);productReview ||= !!table.needs_review;}
+         if(n>=start&&n<=end)locations.push(...parseConsigneeLocations(content.items,n));
+         if(n<=maxTextPages){let previousY=null; let line=''; const lines=[];
+@@ -155,11 +166,11 @@
+       }
+       if(n>=start&&n<=end)for(const a of await page.getAnnotations({intent:'display'})) {
+         const url=officialDocumentUrl(a.url || a.unsafeUrl);
+-        if(url) annotations.push({url,page:n});
++        if(url) annotations.push({url,page:n,label:annotationLabel(tokens,a.rect)});
+       }
+       page.cleanup();
+     }
+-    return {...parseDocumentText(texts.join('\n'),annotations),product_items:productItems,product_table_needs_review:productReview,consignee_locations:mergeConsigneeLocations(locations),page_count:pdf.numPages,text_pages_parsed:Math.min(pdf.numPages,maxTextPages),annotation_start_page:start,annotation_end_page:end,annotation_next_page:end<pdf.numPages?end+1:null,annotation_scan_complete:end===pdf.numPages,document_parse_scope:'metadata_and_resumable_links_and_consignee_addresses'};
++    return {review_pages:reviewPages,...parseDocumentText(texts.join('\n'),annotations),product_items:productItems,product_table_needs_review:productReview,consignee_locations:mergeConsigneeLocations(locations),page_count:pdf.numPages,text_pages_parsed:Math.min(pdf.numPages,maxTextPages),annotation_start_page:start,annotation_end_page:end,annotation_next_page:end<pdf.numPages?end+1:null,annotation_scan_complete:end===pdf.numPages,document_parse_scope:'metadata_and_resumable_links_and_consignee_addresses'};
+   } finally {await pdf.destroy();}
+ }
+ 
+@@ -176,3 +187,4 @@
+   return merged;
+ }
+ 
++
+--- a/worker/pdf-cache.mjs
++++ b/worker/pdf-cache.mjs
+@@ -1,22 +1,23 @@
++import {mergePages,collectReview} from './representation.mjs';
+ import {parsePdfBytes} from './documents.mjs';
+ import {mergeConsigneeLocations} from './locations.mjs';
+ 
+ // A parser revision invalidates the cache without rewriting earlier source evidence.
+-export const PDF_PARSER_VERSION='gem-pdf-metadata-links-locations-products-v5';
++export const PDF_PARSER_VERSION='gem-pdf-review-v6';
+ 
+ export async function readPdfCache(db,url,hash){
+  if(!hash)return null;
+  return (await db.get(`document_parse_cache?source_url=eq.${encodeURIComponent(url)}&source_hash=eq.${hash}&parser_version=eq.${PDF_PARSER_VERSION}&limit=1`))[0]||null;
+ }
+ 
+-export async function parseCachedPdf({db,url,hash,bytes,cached=null,pdfjs,workerModule,startAnnotationPage=1,now=()=>new Date().toISOString()}){
++export async function parseCachedPdf({db,url,hash,bytes,cached=null,pdfjs,workerModule,startAnnotationPage=1,review=false,now=()=>new Date().toISOString()}){
+  if(cached&&(cached.source_url!==url||cached.source_hash!==hash||cached.parser_version!==PDF_PARSER_VERSION))cached=null;
+  if(cached?.scan_complete)return {parsed:cached.parsed,cacheHit:true};
+  // A new job may resume a contiguous scan begun by an earlier job for these exact bytes.
+  const resume=cached?.scan_started_at_page===1&&cached.next_annotation_page;
+  const start=resume||startAnnotationPage;
+  const contiguous=cached&&cached.next_annotation_page===start;
+- const chunk=await parsePdfBytes(bytes,{pdfjs,workerModule,startAnnotationPage:start,...(contiguous?{maxTextPages:0}:{})});
++ const chunk=await parsePdfBytes(bytes,{pdfjs,workerModule,startAnnotationPage:start,reviewUrl:review?url:null,...(contiguous?{maxTextPages:0}:{})});
+  const documents=[...new Map([...(contiguous?cached.parsed.documents||[]:[]),...chunk.documents].map(d=>[d.url,d])).values()];
+  const firstPage=contiguous?cached.scan_started_at_page:chunk.annotation_start_page;
+  const productItems=[...new Map([...(contiguous?cached.parsed.product_items||[]:[]),...(chunk.product_items||[])].map(i=>[i.item_key,i])).values()];
+@@ -24,9 +25,14 @@
+   consignee_locations:mergeConsigneeLocations(contiguous?cached.parsed.consignee_locations||[]:[],chunk.consignee_locations||[]),page_count:chunk.page_count,
+   annotation_start_page:firstPage,annotation_end_page:chunk.annotation_end_page,
+   annotation_next_page:chunk.annotation_next_page,annotation_scan_complete:chunk.annotation_scan_complete};
++ if(review){
++  Object.assign(parsed,collectReview(mergePages(contiguous?cached.parsed.review_pages||[]:[],chunk.review_pages||[])));
++  parsed.review_limited ||= !!(contiguous && cached.parsed.review_limited);
++ }else delete parsed.review_pages;
+  await db.upsert('document_parse_cache',{source_url:url,source_hash:hash,parser_version:PDF_PARSER_VERSION,
+   parsed,scan_started_at_page:firstPage,next_annotation_page:chunk.annotation_next_page,
+   scan_complete:firstPage===1&&chunk.annotation_scan_complete,updated_at:now()});
+  return {parsed,cacheHit:false};
+ }
+ 
++
+--- a/worker/sync.mjs
++++ b/worker/sync.mjs
+@@ -32,7 +32,7 @@
+ const listingSignature=row=>JSON.stringify([row.gem_id,row.title,row.item,row.item_category||'',row.boq_title,row.quantity]);
+ const isRecent=(value,now,maxAge=DOCUMENT_RECHECK_MS)=>!!value&&Date.parse(value)<=now+300000&&now-Date.parse(value)<maxAge;
+ function fileName(url){const last=new URL(url).pathname.split('/').pop();try{return decodeURIComponent(last);}catch{return last;}}
+-function linkRecord(url){const kind=kindForDatabase(documentKind(url));return {kind,official_url:url,document_key:kind==='bid'?'bid':`${kind}:${url}`,filename:fileName(url)};}
++function linkRecord(url,label){const kind=kindForDatabase(documentKind(url,label));return {kind,official_url:url,document_key:kind==='bid'?'bid':`${kind}:${url}`,filename:fileName(url)};}
+ 
+ /** One leased invocation. Every page, row and failed source unit has a durable cursor. */
+ export async function runWorker({db,rules,pdfjs,workerModule,fetchImpl=fetch,clock=()=>Date.now(),budgetMs=40000,gemClient=null}) {
+@@ -279,7 +279,7 @@
+    const extraction=csv&&existing&&prior.content_hash?(await db.get(`tender_product_extractions?select=status&tender_id=eq.${existing.id}&source_url=eq.${encodeURIComponent(url)}&source_hash=eq.${prior.content_hash}&parser_version=eq.${PRODUCT_PARSER_VERSION}&limit=1`))[0]:null;
+    // A 304 only proves unchanged bytes; it cannot prove that an unfinished parse completed.
+    const doc=await fetchOfficialDocument(url,{fetchImpl,previous:(pdfCandidate&&!cached?.scan_complete)||(csv&&!extraction)?{}:prior,
+-    // Attachments are hashed but not parsed here, so a bounded larger buffer is safe.
++    // Keep attachment fetches and parsing slices bounded.
+     ...(!main&&!csv?{maxBytes:24*1024*1024,timeoutMs:20000}:{})});stats.last_gem_contact=observed();stats.documents_checked++;
+    let row=source,parsed;
+    if(pdfCandidate){
+@@ -287,10 +287,14 @@
+     // An old parser's annotation cursor cannot prove that earlier Address
+     // columns were inspected by the current parser revision.
+     const startAnnotationPage=cached&&cursor.document_hash===doc.content_hash?cursor.annotation_page||1:1;
+-    const result=await parseCachedPdf({db,url,hash:doc.content_hash,bytes:doc.bytes,cached,pdfjs,workerModule,startAnnotationPage,now:observed});
+-    parsed=result.parsed;parsedThisInvocation=!result.cacheHit;
++    const published=Date.parse(existing?.published_at||source.published_at);
++    const review=documentKind(url)==='specification' || Number.isFinite(published)&&published<=clock()&&clock()-published<=96*3600000;
++    const result=await parseCachedPdf({db,url,review,hash:doc.content_hash,bytes:doc.bytes,cached,pdfjs,workerModule,startAnnotationPage,now:observed});
++    // Keep page text in the source-hash cache, outside candidate and job payloads.
++    const {review_pages,review_limited,filing_hours,...metadata}=result.parsed;
++    parsed=metadata;parsedThisInvocation=!result.cacheHit;
+     stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']=(stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']||0)+1;
+-    row={...mergeDocumentFacts(source,parsed),document_verification_status:'VERIFIED',document_verified_at:observed(),document_listing_signature:source.document_listing_signature||listingSignature(source)};
++    if(main)row={...mergeDocumentFacts(source,parsed),document_verification_status:'VERIFIED',document_verified_at:observed(),document_listing_signature:source.document_listing_signature||listingSignature(source)};
+    }
+    // A PDF omitting its quadrant must not block enrichment of an existing
+    // classified bid; new unknown-category bids still require verification.
+@@ -313,13 +317,13 @@
+     // A delayed original PDF must never undo a newer listing deadline.
+     if(existing){delete patch.deadline;delete patch.published_at;delete patch.opening_at;}
+     // Publish discovered official links immediately; each child verifies availability/hash.
+-    patch.documents=[record,...attachments.filter(a=>!knownUrls.has(a.url)).map(a=>linkRecord(a.url))];patch.documents_complete=false;
++    patch.documents=[record,...attachments.filter(a=>!knownUrls.has(a.url)).map(a=>linkRecord(a.url,a.label))];patch.documents_complete=false;
+     const saved=await ingest(patch,lane,observed());
+     // Only a complete, contiguous main-PDF scan can establish the full set
+     // of consignees. A partial parse must not erase another delivery city.
+     if(main&&parsed?.annotation_scan_complete&&parsed.annotation_start_page===1&&parsed.consignee_locations?.length)
+      await db.rpc('record_tender_pdf_locations',{p_tender_id:saved.tender_id,p_locations:parsed.consignee_locations,p_source_url:url,p_source_hash:doc.content_hash,p_observed_at:observed()});
+-    if(!parsed?.product_table_needs_review&&parsed?.product_items?.length&&parsed.annotation_scan_complete&&parsed.annotation_start_page===1){
++    if(main&&!parsed?.product_table_needs_review&&parsed?.product_items?.length&&parsed.annotation_scan_complete&&parsed.annotation_start_page===1){
+      await db.rpc('record_tender_products',{p_tender_id:saved.tender_id,p_url:url,p_hash:doc.content_hash,p_items:parsed.product_items.map(i=>({...i,item_key:url+'#'+i.item_key})),p_parser:PDF_PRODUCT_PARSER_VERSION});
+     }
+     if(csv&&!doc.not_modified){
+@@ -467,3 +471,4 @@
+ }
+ 
+ 
++

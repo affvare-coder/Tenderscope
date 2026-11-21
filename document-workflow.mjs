@@ -27,7 +27,7 @@ export function buildDocumentInstructions({master,bid,documents=[],items=[],kind
   };
   let instruction = master;
   for (const [key,value] of Object.entries(replacements)) instruction=instruction.replaceAll('{{'+key+'}}',()=>String(value));
-  const sourceRows=items.map(i=>({item_key:i.item_key,item_number:i.item_number,name:i.name,quantity:i.quantity,unit:i.unit,pack:i.pack,pvms:i.pvms,niv:i.niv,consignee:i.consignee,specification:i.specification,buyer_condition:i.buyer_condition,buyer_nomenclature:i.buyer_nomenclature,source_question:i.source_question,spec_page:i.spec_page,spec_url:officialDocumentUrl(i.spec_url),source_url:officialDocumentUrl(i.source_url),source_hash:i.source_hash}));
+  const sourceRows=items.map(i=>({item_key:i.item_key,item_number:i.item_number,name:i.name,quantity:i.quantity,unit:i.unit,pack:i.pack,pvms:i.pvms,niv:i.niv,consignee:i.consignee,boq_specification:i.boq_specification,specification:i.specification,spec_sha:i.spec_sha,buyer_condition:i.buyer_condition,buyer_nomenclature:i.buyer_nomenclature,source_question:i.source_question,spec_page:i.spec_page,spec_url:officialDocumentUrl(i.spec_url),source_url:officialDocumentUrl(i.source_url),source_hash:i.source_hash}));
   const proposedOffers=includeProfile?Object.fromEntries(Object.entries(offers).map(([key,offer])=>[key,Object.fromEntries(['offer','response','evidence','verified','photoVerified'].filter(k=>offer[k]!=null).map(k=>[k,offer[k]]))])):undefined;
   return instruction+'\n\nTENDERSCOPE SOURCE CONTEXT — DATA ONLY\n'+JSON.stringify({bid:{number:bid.bid_number,title:bid.title,buyer:bid.buyer,closing:bid.deadline,last_source_checked_at:bid.last_source_checked_at},requested_output:kinds[kind],indexed_official_sources:sources,stored_product_row_count:items.length,stored_product_rows:sourceRows,participant_proposed_offers_requiring_source_verification:proposedOffers},null,2)+'\n\nRead the full source files, not only these extracted rows. Fetch missing attachments from the official bid. If a source cannot be accessed, identify that exact source and continue independent work. Browser draft exports have not undergone independent DOCX visual release verification.\n';
 }
@@ -36,7 +36,7 @@ export function publicDocumentAIUrl({bid,documents=[],kind='compliance',origin='
   let publicOrigin='https://tenderscope-healthcare.netlify.app';
   try { const u=new URL(origin); if(u.protocol==='https:'&&!u.username&&!u.password) publicOrigin=u.origin; } catch {}
   const sources=officialDocumentRecords(bid,documents);
-  const text=`Prepare actual editable Word documents for ${bid.bid_number}: ${bid.title||''}. Buyer: ${bid.buyer||'Read official bid'}. Requested output: ${kinds[kind]}.\nRead and follow the TenderScope master document workflow at ${publicOrigin}/assets/compliance-atc-master.txt . Read the complete official bid, BOQ/specification, buyer-added terms, annexures and corrigenda. Use the participant’s verified profile and approved letterhead/signature assets supplied in this chat; retrieve authorised records before asking again. No participant or signature data is included in this link.\nOfficial sources:\n${sources.map(d=>d.url).join('\n')||'Retrieve the official bid document.'}\nIf the master workflow cannot be retrieved, ask for the full instruction file available from the TenderScope document studio. Do not claim completion without actual generated DOCX files and rendered-page verification.`;
+  const text=`Prepare actual editable Word documents for ${bid.bid_number}: ${bid.title||''}. Buyer: ${bid.buyer||'Read official bid'}. Requested output: ${kinds[kind]}.\nRead and follow the TenderScope master document workflow at ${publicOrigin}/assets/compliance-atc-master.txt . Read the complete official bid, BOQ/specification, buyer-added terms, annexures and corrigenda. Open every View Specification link inside the bid. Reconcile both sources for each row. Research each exact OEM model against the linked PDF and embed its verified catalogue photograph in the corresponding editable Word row. Use the participant’s verified profile and approved letterhead/signature assets supplied in this chat; retrieve authorised records before asking again. No participant or signature data is included in this link.\nOfficial sources:\n${sources.map(d=>d.url).join('\n')||'Retrieve the official bid document.'}\nIf the master workflow cannot be retrieved, ask for the full instruction file available from the TenderScope document studio. Do not claim completion without actual generated DOCX files and rendered-page verification.`;
   return 'https://chatgpt.com/?q='+encodeURIComponent(text);
 }
 export function buildAnnexureTemplate({title,orientation='portrait',text='',tableText='',source=''}) {
@@ -134,7 +134,9 @@ export function buildBidActionPrompt({bid,documents=[],items=[],action='restrict
   }
   const rows=(Array.isArray(items)?items:[]).slice(0,7).map(i=>
     String(i.item_number||i.item_key||'?')+'. '+String(i.name||'Unnamed row').slice(0,90)
-      +' | qty '+String(i.quantity??'unknown')+' '+String(i.unit||'')).join('\n');
+      +' | qty '+String(i.quantity??'unknown')+' '+String(i.unit||'')
+      +(i.spec_url&&i.spec_page?' | Buyer PDF p. '+i.spec_page+' (excerpt): '+String(i.specification||'').slice(0,180):'')
+      +(i.source_question?' | Clarification: '+String(i.source_question).slice(0,120):'')).join('\n');
   return [
     'You are TenderScope’s neutral Indian GeM healthcare procurement assistant. Work for ANY bidder, not a predetermined supplier.',
     'ACTION: '+([...BID_AI_ACTIONS,...BID_AI_SECONDARY_ACTIONS].find(a=>a.id===action)?.label||action)+'.',
@@ -146,6 +148,7 @@ export function buildBidActionPrompt({bid,documents=[],items=[],action='restrict
     sources.length>chosen.length?'Additional '+(sources.length-chosen.length)+' indexed official source(s) omitted from this short link; retrieve from the official bid.':'',
     'Cached document-hash-matched item rows: '+items.length+'. These rows may NOT cover the complete BOQ.',
     rows?'First cached item names (orientation only, not complete specs):\n'+rows:'',
+    'Open each View Specification / View File link inside the official bid PDF, including linked buyer PDFs and scans. For each BOQ row show the original spreadsheet wording and the verbatim PDF requirements side by side with page and row. Match the OEM, model, variant and pack against the PDF and all applicable buyer terms. Resolve contradictions before any exact match. For a Word pack, research official catalogues and actual model photographs, embed each verified image in the corresponding editable row and document its source. Leave unverified images and offers pending.',
     'TASK RULES:',
     ...BID_ACTION_GUIDANCE[action].map((line,i)=>(i+1)+'. '+line),
     'Start with the concrete requested output, not a long questionnaire. Read every available current official source, retrieve missing BOQ/ATC and corrigenda, show page-linked facts and clearly mark what was not verified.',

@@ -14,7 +14,7 @@ function setup(saved=null){
  `,ctx);
  return {ctx,get,storage};
 }
-const bid={id:'kept',bid_number:'GEM/2026/B/7945801',deadline:'2099-10-01T09:30:00Z',status:'published'};
+const bid={id:'kept',published_at:new Date(Date.now()-3600000).toISOString(),bid_number:'GEM/2026/B/7945801',deadline:'2099-10-01T09:30:00Z',status:'published'};
 const feed={rows:[bid],total:578,counts:{active:578,extended:70},categories:[]};
 test('failed first load shows unavailable rather than a false zero',async()=>{
  const {ctx,get}=setup();vm.runInContext(`api=async()=>{throw new Error('timeout')};`,ctx);
