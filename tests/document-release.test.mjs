@@ -40,3 +40,10 @@ test('maximum length contact and licence data flow in ordinary bodies without ex
  const outputs=[await complianceDocx({bid,profile:longProfile,items:[item],offers:{A:offer}}),await atcAcceptanceDocx({bid,profile:longProfile,clauses:['1. Preserve this verbatim buyer clause.']})];
  for(const output of outputs){const {document,headers}=await parts(output);assert(document.includes(address));assert(document.includes(licence));assert(document.includes('qa@example.invalid'));assert(document.includes('SYN-PHONE-01'));assert(document.includes('QA-GST'));assert(document.includes('QA-PAN'));assert(document.includes('QA-UDYAM'));assert(!headers.includes('ADDRESS_DETAIL'));assert(!headers.includes('LICENCE_DETAIL'));assert(!headers.includes('qa@example.invalid'));assert(headers.includes(profile.company));assert(headers.includes(bid.bid_number));assert(headers.includes('DRAFT / BLOCKED'));}
 });
+
+test('a conflicting attachment row exports both buyer requirements and its page without Yes',async()=>{
+ const dental={...item,specification:'Size: 0.016 lower',specification_verified:true,buyer_condition:'Five years in market',source_question:'The item says upper. Confirm the arch.',spec_url:'https://gem.gov.in/bbqr.pdf',spec_page:1};
+ const {document}=await parts(await complianceDocx({bid,profile,items:[dental],offers:{A:offer}}));
+ for(const expected of [dental.specification,dental.buyer_condition,dental.source_question,'page 1, row 1','NEEDS REVIEW'])assert.ok(document.includes(expected),expected);
+ assert.doesNotMatch(document,/>Yes</);
+});

@@ -289,6 +289,16 @@ function locationPanel(t) {
  const evidence=t.location_evidence||{},verified=evidence.verification==='OFFICIAL_FACT';
  return `<section class="detail-section location-evidence"><h3>Delivery location</h3><p><strong>${esc(t.location||'Not recorded')}</strong></p><p class="section-note">${verified?'Official location field checked':'Location needs verification against the official delivery details'}${evidence.observed_at?' · '+esc(stamp(evidence.observed_at)):''}</p>${sourceLink(evidence.source_url||t.source_url,'Open location source ↗','timeline-source')}</section>`;
 }
+function attachmentSpecCell(item) {
+ const spec=esc(item.specification||'Not specified');
+ const schedule=sourceLink(item.source_url,'Official BOQ ↗','timeline-source');
+ if(!item.spec_url || !Number.isInteger(item.spec_page) || item.spec_page<1)return spec+'<small>'+schedule+'</small>';
+ const url=officialUrl(item.spec_url);
+ const source=url?sourceLink(url+'#page='+item.spec_page,'BBQR p. '+item.spec_page+' · row '+esc(item.item_number)+' ↗','timeline-source'):'';
+ const condition=item.buyer_condition?'<small><b>Buyer compliance condition</b> '+esc(item.buyer_condition)+'</small>':'';
+ const question=item.source_question?'<small><b>Buyer clarification needed</b> '+esc(item.source_question)+'</small>':'';
+ return spec+condition+question+'<small>'+source+' · '+schedule+'</small>';
+}
 function productsPanel(items,documents=[],bid=null) {
  const completeness=typeof window!=='undefined'&&window.TenderScopeDocs?.assessBoqCompleteness
   ? window.TenderScopeDocs.assessBoqCompleteness({items,documents,expectedCountEvidence:bid?.expected_item_count_evidence||null})
@@ -303,7 +313,7 @@ function productsPanel(items,documents=[],bid=null) {
  const current=items.filter(item=>item.is_current!==false && !isAnonymousScheduleLabel(item.name) && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
  if(!current.length)return note+'<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
- return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${esc(item.specification||'Not specified')}<small>${sourceLink(item.source_url,'Official BOQ ↗','timeline-source')}</small></td></tr>`).join('')}</tbody></table></div>`;
+ return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${attachmentSpecCell(item)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 const reviewLabels = {
   item:'Buyer item and quantity', consignee:'Consignee', bidder:'Bidder turnover', oem:'OEM turnover',
@@ -494,7 +504,7 @@ async function currentPackSource(id,summary=false) {
   if(!data?.version || (!summary && (!data.bid || !Array.isArray(data.items) || !Array.isArray(data.documents))))throw Error('Current buyer documents could not be verified. Refresh the bid and try again.');
   if(!summary){
     const keys=new Set((data.certified_rows||[]).map(row=>row.key));
-    data.items=data.items.map(item=>({...item,specification_verified:keys.has(item.item_key),specs_verified:false}));
+    data.items=data.items.map(item=>({...item,specification_verified:!item.source_question && (keys.has(item.item_key) || item.reviewed_specification===true),specs_verified:false}));
   }
   return data;
 }

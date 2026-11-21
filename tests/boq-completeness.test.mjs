@@ -87,3 +87,9 @@ test('an unverified buyer specification cannot become an affirmative offer',asyn
  assert.equal(complianceRows([{...row(1),specification_verified:false}],offer)[0].response,'NEEDS REVIEW');
  assert.equal(complianceRows([row(1)],offer)[0].response,'Yes');
 });
+
+test('a buyer conflict and an outstanding full-file review each prevent Complete',()=>{
+ const pending={...evidence(1),full_review_pending:true};
+ assert.equal(assessBoqCompleteness({items:[row(1)],documents:docs,expectedCountEvidence:pending}).ready,false);
+ assert.equal(assessBoqCompleteness({items:[{...row(1),source_question:'Upper or lower?'},row(2)],documents:docs,expectedCountEvidence:evidence(2)}).verified_item_count,1);
+});

@@ -1,5 +1,5 @@
 import {isAnonymousScheduleLabel} from './product-quality.mjs';
-import {assessBoqCompleteness} from './boq-completeness.mjs';
+import {assessBoqCompleteness,attachmentNotes} from './boq-completeness.mjs';
 import {PDFDocument,rgb} from 'pdf-lib';
 import {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,Header,Footer,ImageRun,PageNumber,WidthType,AlignmentType,VerticalAlign,PageOrientation,BorderStyle} from 'docx';
 
@@ -11,7 +11,7 @@ export function verifiedItems(items,documents){return items.filter(i=>i.is_curre
 export function validateProfile(profile){if(!clean(profile.company)||!clean(profile.signatory))throw Error('Enter the company name and authorised signatory.');}
 export function complianceRows(items,offers={}){
  if(!items.length)throw Error('Verified product rows are not available yet. Upload and verify the official BOQ first.');
- return items.map(i=>{const o=offers[i.item_key]||{};const requested=clean(o.response)||'NEEDS REVIEW';const supported=i.specification_verified===true && o.verified===true && !!clean(o.offer) && !!clean(o.evidence);return {...i,offer:clean(o.offer),response:/^yes$/i.test(requested)&&!supported?'NEEDS REVIEW':requested,evidence:clean(o.evidence),photo:o.photo,offerVerified:supported,photoVerified:o.photoVerified===true,photoRequired:o.photoRequired!==false};});
+ return items.map(i=>{const o=offers[i.item_key]||{};const requested=clean(o.response)||'NEEDS REVIEW';const supported=!i.source_question && i.specification_verified===true && o.verified===true && !!clean(o.offer) && !!clean(o.evidence);return {...i,offer:clean(o.offer),response:/^yes$/i.test(requested)&&!supported?'NEEDS REVIEW':requested,evidence:clean(o.evidence),photo:o.photo,offerVerified:supported,photoVerified:o.photoVerified===true,photoRequired:o.photoRequired!==false};});
 }
 function rowBlockers(i){const b=[];if(!clean(i.name))b.push('Missing buyer item name');if(isAnonymousScheduleLabel(i.name))b.push('Buyer item description not verified');if(!clean(i.specification))b.push('Missing full buyer specification');if(i.quantity==null)b.push('Missing buyer quantity');if(!clean(i.source_url)||!clean(i.source_hash))b.push('Current official item provenance missing');if(!clean(i.offer))b.push('Offered OEM, product and pack not selected');if(!i.offerVerified)b.push('Offer evidence not verified');if(!/^yes$/i.test(i.response))b.push('Compliance response requires review');if(i.photoRequired&&(!i.photo||!i.photoVerified))b.push('Matching approved product photograph not verified');return b;}
 function release(review={},blockers=[]){return review.confirmed===true&&review.sourceVerified===true&&review.rendered===true&&review.executionAuthorized===true&&!blockers.length&&!(review.blockers||[]).length;}
@@ -51,8 +51,8 @@ export async function complianceDocx({bid,profile,items,sourceItems=items,docume
  validateProfile(profile);const rows=complianceRows(items,offers),verification=documentVerification({bid,profile,items,sourceItems,documents,expectedCountEvidence,offers,images,review}),ready=verification.ready;
  const coverage=verification.boq;
  const coverageNote=ready?[]:[p(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. This draft contains ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`,true)];
- const displayRows=rows.flatMap(i=>specFragments(i.specification).map((specification,index)=>({...i,specification,continuation:index>0})));
- const widths=[1800,2850,2400,1600,1000],headings=['Item and quantity','Exact buyer specification','Offered OEM product and pack','Product photograph','Status'];
+ const displayRows=rows.flatMap(i=>specFragments([i.specification,...attachmentNotes(i)].filter(Boolean).join('\n')).map((specification,index)=>({...i,specification,continuation:index>0})));
+ const widths=rows.some(i=>i.spec_url)?[1900,3950,1660,1250,1000]:[1800,2850,2400,1600,1000],headings=['Item and quantity','Exact buyer specification','Offered OEM product and pack','Product photograph','Status'];
  const table=new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:widths,rows:[new TableRow({tableHeader:true,children:headings.map((h,j)=>cell([p(h,true)],widths[j],true))}),...displayRows.map(i=>new TableRow({cantSplit:true,children:[
  cell(lines(`${i.continuation?'Continued item ':''}${i.item_number||''}. ${i.name}\nQuantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?'\nPack: '+i.pack:''}${i.pvms||i.niv?'\nPVMS/NIV: '+(i.pvms||i.niv):''}${i.consignee?'\nConsignee: '+i.consignee:''}`),widths[0]),
  cell(lines(i.specification||'Source specification pending'),widths[1]),cell(lines(i.offer||'Offer selection pending'),widths[2]),
@@ -99,7 +99,7 @@ export async function compliancePdf({bid,profile,items,sourceItems=items,documen
  const put=(v,size=10)=>{for(const line of wrap(font,v,size,505)){if(y<130)newPage();page.drawText(line,{x:45,y,size,font});y-=size+5;}};
  newPage();if(clean(profile.address))put('Registered address: '+profile.address);const contact=[['Email',profile.email],['Phone',profile.phone]].filter(([,v])=>clean(v)).map(([k,v])=>`${k}: ${v}`).join(' | ');if(contact)put(contact);if(identity(profile))put(identity(profile),9);put('To, The Competent Authority');put(bid.buyer||'');put(`Technical offer for ${bid.title||bid.bid_number}`,12);y-=6;
  if(!ready){const coverage=verification.boq;put(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. Draft includes ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`);}
- for(const i of rows){if(y<260)newPage();put(`${i.item_number||''}. ${i.name}`,12);put(`Quantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?' | Pack: '+i.pack:''}${i.pvms||i.niv?' | PVMS/NIV: '+(i.pvms||i.niv):''}`);if(i.consignee)put('Consignee: '+i.consignee);put('Buyer specification: '+(i.specification||'Source specification pending'));put('Offered OEM product and pack: '+(i.offer||'Offer selection pending'));put('Compliance: '+i.response);
+ for(const i of rows){if(y<260)newPage();put(`${i.item_number||''}. ${i.name}`,12);put(`Quantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?' | Pack: '+i.pack:''}${i.pvms||i.niv?' | PVMS/NIV: '+(i.pvms||i.niv):''}`);if(i.consignee)put('Consignee: '+i.consignee);put('Buyer specification: '+(i.specification||'Source specification pending'));for(const note of attachmentNotes(i))put(note);put('Offered OEM product and pack: '+(i.offer||'Offer selection pending'));put('Compliance: '+i.response);
   if(i.photo&&i.photoVerified){const im=await doc[i.photo.type==='png'?'embedPng':'embedJpg'](i.photo.bytes),s=fitImage(i.photo,115,82);if(y<130+s.height)newPage();page.drawImage(im,{x:45,y:y-s.height,width:s.width,height:s.height});y-=s.height+10;}else put('Product photograph review pending');y-=15;
  }
  if(y<220)newPage();put('For '+profile.company);put(profile.signatory);put(profile.designation||'Authorised signatory');
