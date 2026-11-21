@@ -14,6 +14,9 @@ const VIEW = {
   ready: ['Verified BOQs', 'Every item and mandatory specification has been checked against the recorded buyer documents. Check bidder eligibility before quoting.'],
   allopen: ['All open bids', 'Open healthcare bids across all locations, including bids awaiting document verification.'],
   active: ['All opportunities', 'Healthcare bids from official GeM sources. Delhi-only bids are in Delhi healthcare. Choose a bid to explore its documents and recorded changes.'],
+  published24: ['Published in the last 24 hours', 'Open healthcare bids across all locations, ordered by publication time.'],
+  published92: ['Published in the last 92 hours', 'Open healthcare bids across all locations, ordered by publication time.'],
+  closing72: ['Closing in the next 72 hours', 'Open healthcare bids across all locations with an exact verified closing time.'],
   new: ['Published in the last 24 hours', 'Healthcare bids published in the last 24 hours. Deadline extensions are in Extended opportunities.'],
   recent96: ['Published in the last 96 hours', 'Open healthcare bids published in the past four days. Deadline extensions are in Extended opportunities.'],
   updated: ['Updated opportunities', 'Open bids with a recorded change after their first publication.'],
@@ -102,6 +105,15 @@ function matchesView(t, view, search = '') {
       && (exact === t.bid_number || exact === String(t.bid_number || '').split('/')[3])) return true;
   if (view === 'delhi') return active(t) && (t.location_class === 'DELHI' || (t.location_class === 'MULTI_LOCATION' && t.location_includes_delhi));
   if (view === 'multi') return active(t) && t.location_class === 'MULTI_LOCATION';
+  if (view==='closing72') {
+    const remaining=hrs(t);
+    return active(t) && t.closing_time_verified===true && !!t.deadline_precision && exactDeadline(t) && remaining>0 && remaining<=72;
+  }
+  if (view==='published24' || view==='published92') {
+    const published=time(t.published_at);
+    const age=Date.now()-published;
+    return active(t) && published!==null && age>=0 && age<=(view==='published24'?24:92)*3600000;
+  }
   if (t.location_class === 'DELHI') return false;
   if (view === 'watch') return false;
   if (!active(t)) return false;
@@ -220,11 +232,15 @@ function categories() {
   if (values.includes(current)) $('categoryFilter').value = current;
 }
 function kpis() {
-  for (const [id,key] of Object.entries({kpiLive:'allopen',kpiUrgent:'closing',kpiDefence:'defence',kpiNewToday:'new'})) $(id).textContent = S.loaded ? Number(S.counts[key] ?? (key==='allopen'?S.counts.active:0) ?? 0).toLocaleString('en-IN') : '—';
-  document.querySelectorAll('[data-view]').forEach(button => {
-    button.querySelector('.nav-count').textContent = S.loaded ? Number(S.counts[button.dataset.view] || 0).toLocaleString('en-IN') : '—';
-    button.classList.toggle('active', (button.dataset.view === S.view || (S.view==='landing' && button.dataset.view===(S.counts.ready && !$('searchInput').value.trim()?'ready':'allopen'))));
-    button.setAttribute('aria-pressed', String((button.dataset.view === S.view || (S.view==='landing' && button.dataset.view===(S.counts.ready && !$('searchInput').value.trim()?'ready':'allopen')))));
+  const selected=S.view==='landing' ? (S.counts.ready && !$('searchInput').value.trim() ? 'ready' : 'allopen') : S.view;
+  for(const [id,key] of Object.entries({kpiLive:'allopen',kpiUrgent:'closing72',kpiNewToday:'published24',kpiRecent:'published92'})){
+    $(id).textContent=S.loaded?Number(S.counts[key] ?? (key==='allopen'?S.counts.active:0) ?? 0).toLocaleString('en-IN'):'—';
+  }
+  document.querySelectorAll('[data-view], [data-home-view]').forEach(button=>{
+    const view=button.dataset.homeView || button.dataset.view;
+    if(button.dataset.view)button.querySelector('.nav-count').textContent=S.loaded?Number(S.counts[view]||0).toLocaleString('en-IN'):'—';
+    button.classList.toggle('active',view===selected);
+    button.setAttribute('aria-pressed',String(view===selected));
   });
 }
 let filterTimer;
@@ -589,7 +605,7 @@ async function handleAction(event) {
 }
 function selectView(view) {
   S.view = VIEW[view] ? view : 'active';
-  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['active','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
+  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['allopen','active','published24','published92','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
   $('sortOrder').value = S.sort;
   kpis(); filter(); closeSidebar();
 }
@@ -609,8 +625,9 @@ $('sortOrder').onchange = () => { S.sort = $('sortOrder').value; filter(); };
 $('filtersToggle').onclick = () => { const open = $('filterPanel').hidden; $('filterPanel').hidden = !open; $('filtersToggle').setAttribute('aria-expanded',String(open)); };
 $('filterSummary').addEventListener('click', handleAction);
 $('viewTabs').addEventListener('click', event => { const button = event.target.closest('[data-view]'); if (button) selectView(button.dataset.view); });
-document.querySelectorAll('[data-quick-view]').forEach(button => button.onclick = () => { resetFilters(); selectView(button.dataset.quickView); $('opportunities').scrollIntoView({behavior:'smooth'}); });
-document.querySelector('[data-quick-defence]').onclick = () => { resetFilters(); selectView('active'); $('defenceFilter').value = 'yes'; filter(); $('opportunities').scrollIntoView({behavior:'smooth'}); };
+document.querySelectorAll('[data-home-view]').forEach(button=>{
+  button.addEventListener('click',()=>selectView(button.dataset.homeView));
+});
 $('menuToggle').onclick = () => { const open = !$('sidebar').classList.contains('is-open'); $('sidebar').classList.toggle('is-open',open); $('sidebarBackdrop').hidden = !open; $('menuToggle').setAttribute('aria-expanded',String(open)); };
 $('sidebarBackdrop').onclick = closeSidebar;
 $('tenderList').addEventListener('click', handleAction);

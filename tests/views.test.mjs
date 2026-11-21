@@ -57,3 +57,18 @@ test('missing monetary evidence stays unverified and published amounts include z
  assert.equal(context.f.money(0),'₹0');
  assert.equal(context.f.money(6000000),'₹60,00,000');
 });
+
+test('homepage windows include all locations and use the actual publication and deadline',()=>{
+ const hour=3600000, now=Date.now();
+ const row={...bid,is_extended:true,deadline:new Date(now+71*hour).toISOString(),closing_time_verified:true,deadline_precision:'exact_time'};
+ const since=hours=>({...row,published_at:new Date(now-hours*hour).toISOString()});
+ assert.equal(matchesView(since(23.9),'published24'),true);
+ assert.equal(matchesView(since(24.1),'published24'),false);
+ assert.equal(matchesView(since(91.9),'published92'),true);
+ assert.equal(matchesView(since(92.1),'published92'),false);
+ assert.equal(matchesView(since(-1),'published92'),false);
+ assert.equal(matchesView(row,'closing72'),true);
+ assert.equal(matchesView({...row,closing_time_verified:false},'closing72'),false);
+ assert.equal(matchesView({...row,deadline:new Date(now+73*hour).toISOString()},'closing72'),false);
+ for(const view of ['allopen','closing72','published24','published92'])assert.equal(matchesView({...since(1),deadline:new Date(now-hour).toISOString()},view),false);
+});
