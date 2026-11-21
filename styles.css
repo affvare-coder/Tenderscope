@@ -90,7 +90,7 @@
 
 .home-bid-views {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 16px;
 }
@@ -119,3 +119,7 @@
 @media (max-width: 900px) {
   .home-bid-views {grid-template-columns: repeat(2, minmax(0, 1fr));}
 }
+
+.review-source-text {white-space:pre-wrap; overflow-wrap:anywhere; font:inherit;}
+.representation-draft {width:100%; min-height:10rem; padding:10px; font:inherit;}
+@media (max-width:900px){.home-bid-views button:first-child{grid-column:1/-1;}}

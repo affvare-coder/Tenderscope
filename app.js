@@ -4,13 +4,14 @@ const API_URL = typeof location!=='undefined' && ['terminal.local','localhost','
 const KEY = 'sb_publishable_8ZPkgNORB1X60ic5LaRWxw_EevahDkr';
 const H = { apikey: KEY };
 const $ = id => document.getElementById(id);
-const S = { buyerReviews: new Map(), all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), itemRows: new Map(), products: new Map(), productsLoading: false, productsState: 'idle', view: 'landing', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'newest' };
+const S = { buyerReviews: new Map(), all: [], filtered: [], total: 0, counts: {}, categories: [], pageOffset: 0, pageSize: 40, requestId: 0, pageKey: null, docs: new Map(), itemRows: new Map(), products: new Map(), productsLoading: false, productsState: 'idle', view: 'representation', loading: false, loaded: false, lastLoadedAt: null, selected: null, detailRequest: 0, sort: 'newest' };
 const F = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const FD = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const DAY = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Kolkata' });
 const esc = (v = '') => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const VIEW = {
   landing: ['Verified BOQs', 'Bids with independently checked quantities, units and buyer specifications.'],
+  representation: ['Representation active', 'Review fresh bids within 72 hours of publication. An explicit filing period in the current bid takes precedence. Confirm availability in the GeM seller dashboard.'],
   ready: ['Verified BOQs', 'Every item and mandatory specification has been checked against the recorded buyer documents. Check bidder eligibility before quoting.'],
   allopen: ['All open bids', 'Open healthcare bids across all locations, including bids awaiting document verification.'],
   active: ['All opportunities', 'Healthcare bids from official GeM sources. Delhi-only bids are in Delhi healthcare. Choose a bid to explore its documents and recorded changes.'],
@@ -105,6 +106,10 @@ function matchesView(t, view, search = '') {
       && (exact === t.bid_number || exact === String(t.bid_number || '').split('/')[3])) return true;
   if (view === 'delhi') return active(t) && (t.location_class === 'DELHI' || (t.location_class === 'MULTI_LOCATION' && t.location_includes_delhi));
   if (view === 'multi') return active(t) && t.location_class === 'MULTI_LOCATION';
+  if (view==='representation') {
+    const published=time(t.published_at), end=representationEnd(t);
+    return active(t) && published!==null && published<=Date.now() && end!==null && end>Date.now();
+  }
   if (view==='closing72') {
     const remaining=hrs(t);
     return active(t) && t.closing_time_verified===true && !!t.deadline_precision && exactDeadline(t) && remaining>0 && remaining<=72;
@@ -131,7 +136,22 @@ function matchesView(t, view, search = '') {
   if (view === 'research') return /research|\bafmrc\b|\banv\b|anveshan/.test(text);
   return true;
 }
+function representationEnd(t) {
+  const start=time(t.published_at);
+  if(start===null)return null;
+  return Math.min(time(t.representation_ends_at) ?? start+72*3600000,deadlineTime(t) ?? Infinity);
+}
+function reviewClock(t) {
+  const end=representationEnd(t);
+  if(end===null)return 'Publication time unverified';
+  return (t.representation_ends_at?'Filing target from bid':'72-hour review target')+' · '+stamp(new Date(end));
+}
+function planningFromEmd(t) {
+  return t.estimated_value_inr==null && Number.isFinite(Number(t.emd_inr)) && Number(t.emd_inr)>0;
+}
+function displayValue(t) {return planningFromEmd(t)?Number(t.emd_inr)*30:t.estimated_value_inr;}
 function valueLabel(t) {
+  if(planningFromEmd(t))return 'Estimate · EMD × 30';
   const basis = String(t.value_basis || '').toLowerCase();
   if (t.estimated_value_inr == null || basis === 'unavailable') return 'Bid value';
   if (!basis) return 'Value · basis unverified';
@@ -233,7 +253,7 @@ function categories() {
 }
 function kpis() {
   const selected=S.view==='landing' ? (S.counts.ready && !$('searchInput').value.trim() ? 'ready' : 'allopen') : S.view;
-  for(const [id,key] of Object.entries({kpiLive:'allopen',kpiUrgent:'closing72',kpiNewToday:'published24',kpiRecent:'published92'})){
+  for(const [id,key] of Object.entries({kpiLive:'allopen',kpiUrgent:'closing72',kpiNewToday:'published24',kpiRecent:'published92',kpiRepresentation:'representation'})){
     $(id).textContent=S.loaded?Number(S.counts[key] ?? (key==='allopen'?S.counts.active:0) ?? 0).toLocaleString('en-IN'):'—';
   }
   document.querySelectorAll('[data-view], [data-home-view]').forEach(button=>{
@@ -308,12 +328,12 @@ function locationPanel(t) {
 function attachmentSpecCell(item) {
  const spec=esc(item.specification||'Not specified');
  const schedule=sourceLink(item.source_url,'Official BOQ ↗','timeline-source');
- if(!item.spec_url || !Number.isInteger(item.spec_page) || item.spec_page<1)return spec+'<small>'+schedule+'</small>';
+ if(!item.spec_url || !Number.isInteger(item.spec_page) || item.spec_page<1)return '<small>PDF row mapping pending</small>'+schedule;
  const url=officialUrl(item.spec_url);
- const source=url?sourceLink(url+'#page='+item.spec_page,'BBQR p. '+item.spec_page+' · row '+esc(item.item_number)+' ↗','timeline-source'):'';
+ const source=url?sourceLink(url+'#page='+item.spec_page,'Buyer PDF p. '+item.spec_page+' · row '+esc(item.item_number)+' ↗','timeline-source'):'';
  const condition=item.buyer_condition?'<small><b>Buyer compliance condition</b> '+esc(item.buyer_condition)+'</small>':'';
  const question=item.source_question?'<small><b>Buyer clarification needed</b> '+esc(item.source_question)+'</small>':'';
- return spec+condition+question+'<small>'+source+' · '+schedule+'</small>';
+ return (item.pdf_extracted?'<small>Extracted PDF text · verification pending</small>':'')+spec+condition+question+'<small>'+source+' · '+schedule+'</small>';
 }
 function productsPanel(items,documents=[],bid=null) {
  const completeness=typeof window!=='undefined'&&window.TenderScopeDocs?.assessBoqCompleteness
@@ -329,7 +349,7 @@ function productsPanel(items,documents=[],bid=null) {
  const current=items.filter(item=>item.is_current!==false && !isAnonymousScheduleLabel(item.name) && officialUrl(item.source_url) && item.source_hash && documents.some(d=>d.official_url===item.source_url && d.availability==='available' && d.content_hash===item.source_hash));
  if(!current.length)return note+'<p class="section-note">Product list not yet verified. Read the official BOQ below for item quantities, packs and specifications.</p>';
  current.sort((a,b)=>String(a.item_number||'').localeCompare(String(b.item_number||''),'en',{numeric:true}));
- return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>Buyer specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${attachmentSpecCell(item)}</td></tr>`).join('')}</tbody></table></div>`;
+ return note+`<p class="section-note">${current.length} items extracted from current official documents. Full BOQ and attachment completeness still need checking. Blank fields are not verified.</p>${attachmentNote}<div class="products-table-wrap"><table class="products-table"><thead><tr><th>Item / PVMS / NIV</th><th>Qty / unit</th><th>Pack</th><th>BOQ wording</th><th>Buyer PDF specification</th></tr></thead><tbody>${current.map(item=>`<tr><td><strong>${esc(item.item_number)}. ${esc(item.name)}</strong>${item.pvms||item.niv?`<small>${item.pvms?'PVMS: '+esc(item.pvms):''}${item.pvms&&item.niv?' · ':''}${item.niv?'NIV: '+esc(item.niv):''}</small>`:''}</td><td>${esc(item.quantity??'Not specified')}<small>${esc(item.unit||'Not specified')}</small></td><td>${esc(item.pack||'Unverified')}</td><td class="buyer-specification">${esc((item.boq_specification??(item.spec_url?'See official BOQ':item.specification))||'Not specified')}</td><td class="buyer-specification">${attachmentSpecCell(item)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 const reviewLabels = {
   item:'Buyer item and quantity', consignee:'Consignee', bidder:'Bidder turnover', oem:'OEM turnover',
@@ -347,6 +367,39 @@ function buyerPage(review, page) {
     return u.href;
   } catch { return ''; }
 }
+function representationPanel(t, documents, items) {
+  const concerns=[], sections=[], gaps=[], windows=[], sourceProducts=[];
+  function evidence(url, page) {
+    const u=officialUrl(url);
+    return u && Number.isSafeInteger(page) && page>0 ? sourceLink(u.split('#')[0]+'#page='+page,'Official p. '+page+' ↗','timeline-source') : '';
+  }
+  for(const doc of documents||[]){
+    const pages=doc.checked_pages;
+    if(!Array.isArray(pages)){
+      if(!/\.csv([?#]|$)/i.test(doc.url))gaps.push(doc.kind+' awaiting page review');
+      continue;
+    }
+    if(!doc.scan_complete || doc.limited)gaps.push(doc.kind+' has outstanding pages or source text');
+    for(const p of pages){
+      const ref=evidence(doc.url,p.page);
+      if(!ref)continue;
+      for(const item of p.products||[])sourceProducts.push('<li>'+esc(item.name)+' · '+esc(item.quantity)+' '+esc(item.unit)+' · '+ref+'</li>');
+      if(p.window?.quote)windows.push(esc(p.window.quote)+' '+ref);
+      if(p.needs_image_review)gaps.push(doc.kind+' p. '+p.page+' needs visual review');
+      for(const f of p.findings||[])if(f.quote&&f.question)concerns.push({title:f.title,quote:f.quote,question:f.question,ref,location:doc.kind+' p. '+p.page});
+      if(p.section?.text)sections.push('<details><summary>'+esc(doc.kind)+' · p. '+p.page+'</summary>'+ref+'<p class="review-source-text">'+esc(p.section.text)+'</p>'+(p.section.truncated?'<p>Continue on the official page.</p>':'')+'</details>');
+    }
+  }
+  for(const row of items)if(row.source_question && row.spec_url && row.spec_page)concerns.push({title:'BOQ row '+row.item_number,quote:row.specification,question:row.source_question,ref:evidence(row.spec_url,row.spec_page),location:'Specification p. '+row.spec_page+', row '+row.item_number});
+  const unique=[...new Map(concerns.map(f=>[f.location+'|'+f.question,f])).values()];
+  const draft=unique.map(f=>f.location+' — “'+f.quote+'”\n'+f.question).join('\n\n');
+  const issues=unique.length?'<ol>'+unique.map(f=>'<li><strong>'+esc(f.title)+'</strong> · '+f.ref+'<p>“'+esc(f.quote)+'”</p><p>'+esc(f.question)+'</p></li>').join('')+'</ol>':'<p>No evidence-backed clarification points recorded yet.</p>';
+  return (sourceProducts.length?'<details><summary>Products stated in the bid PDF ('+sourceProducts.length+')</summary><ul>'+sourceProducts.join('')+'</ul></details>':'')+issues+(windows.length?'<p>Filing clause · '+windows.join(' · ')+'</p>':'')+
+    (draft?'<details><summary>Edit clarification draft</summary><label>Draft for bidder review<textarea class="representation-draft">'+esc('For the attention of the Buyer\nSubject: Request for clarification on '+t.bid_number+'\n\nKindly clarify the following points before submission.\n\n'+draft)+'</textarea></label></details>':'')+
+    (gaps.length?'<p>Outstanding checks · '+esc([...new Set(gaps)].join(' · '))+'</p>':'')+
+    (sections.length?'<details><summary>Specification and attachment text ('+sections.length+' pages)</summary>'+sections.join('')+'</details>':'');
+}
+
 function bidderChecks(review, compact=false) {
   const summaryKeys=['bidder','oem','turnover_method','ra','evaluation','emd'];
   if (!review?.facts || !buyerPage(review,1)) {
@@ -382,7 +435,7 @@ function card(t) {
   const countdown = state === 'CLOSED_PENDING_VERIFICATION' ? 'Verification pending' : !active(t) ? lifecycleLabel(t) : !verified ? 'Time pending' : h === null ? 'Date pending' : h < 1 ? 'Less than 1h left' : h < 24 ? `${Math.ceil(h)}h remaining` : `${Math.ceil(h / 24)} days remaining`;
   const urgent = active(t) && verified && h !== null && h <= 72;
   const category = t.subcategory || t.category || 'Healthcare';
-  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Published · 24 hours</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}${bidderChecks(S.buyerReviews.get(t.id),true)}${productPreview(t)}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${t.estimated_value_inr == null ? 'not-published' : ''}">${money(t.estimated_value_inr)}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button type="button" class="btn ghost" data-save-bid="${esc(t.bid_number)}">Save bid</button><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Match products, contact OEMs, prepare documents or represent a bid">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta"><span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
+  return `<article class="tender-card"><div class="card-top"><div><div class="bid-meta"><span class="bid-no">${esc(t.bid_number)}</span><span class="bid-dot" aria-hidden="true"></span><span class="category-label">${esc(category)}</span></div><h3><button class="title-button" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button></h3><div class="buyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg><span>${esc(t.buyer || 'Buyer not recorded')}</span>${t.location ? `<span class="buyer-separator" aria-hidden="true">·</span><span>${esc(t.location)}</span>` : ''}</div></div><div class="deadline ${urgent ? 'urgent' : !active(t) ? 'pending' : ''}"><span class="deadline-label">Closing date</span><strong>${esc(deadline(t))}</strong><small>${urgent ? '<span aria-hidden="true">◷</span>' : ''}${esc(countdown)}</small></div></div><div class="badges"><span class="badge ${active(t) ? 'verified' : 'pending'}">${esc(lifecycleLabel(t))}</span>${defence(t) ? '<span class="badge defence">Defence</span>' : ''}${t.priority ? `<span class="badge ${String(t.priority).startsWith('A1') ? 'a1' : 'a2'}">Priority ${esc(t.priority)}</span>` : ''}<span class="badge ${verified ? 'verified' : 'pending'}">${verified ? 'Exact deadline verified' : 'Closing time pending'}</span>${extended(t) ? `<span class="badge extended">Deadline extended${Number(t.extension_count) > 0 ? ` · ${Number(t.extension_count)}` : ''}</span>` : ''}${recentlyDiscovered(t) ? '<span class="badge">Published · 24 hours</span>' : ''}</div>${extended(t) ? `<div class="extension-line"><strong>Extension recorded</strong><span>Previous: ${esc(stamp(t.previous_deadline))}</span><span>Current: ${esc(deadline(t))}</span></div>` : ''}${risk ? `<div class="risk-line">${esc(risk)}</div>` : ''}${bidderChecks(S.buyerReviews.get(t.id),true)}${productPreview(t)}<div class="card-bottom"><div class="card-facts"><div class="mini-fact"><span>${esc(valueLabel(t))}</span><strong class="${displayValue(t) == null ? 'not-published' : ''}">${money(displayValue(t))}</strong></div><div class="mini-fact"><span>EMD</span><strong class="${t.emd_inr == null ? 'not-published' : ''}">${money(t.emd_inr)}</strong></div><div class="mini-fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div></div><div class="card-actions"><button type="button" class="btn ghost" data-save-bid="${esc(t.bid_number)}">Save bid</button><button class="btn ai" data-action="ai" data-id="${esc(t.id)}" title="Match products, contact OEMs, prepare documents or represent a bid">✦ Ask AI</button>${sourceLink(t.source_url, '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span class="sr-only">Open official GeM source</span>', 'btn source-mini')}<button class="btn primary" data-action="detail" data-id="${esc(t.id)}">View bid <span aria-hidden="true">↗</span></button></div></div><div class="record-meta">${S.view==='representation'?'<strong>'+esc(reviewClock(t))+'</strong>':''}<span>Published ${formatDate(t.published_at)}</span><span>Source checked ${esc(stamp(t.last_source_checked_at || t.last_observed_at))}</span>${updated(t) ? `<span>${esc(changeLabel(eventCode(t)))}</span>` : ''}</div></article>`;
 }
 function render() {
   $('viewHeading').textContent = VIEW[S.view][0];
@@ -476,7 +529,7 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
   $('detailBidNo').textContent = t.bid_number;
   $('detailTitle').textContent = t.title;
   const isEstimate = valueLabel(t) === 'TenderScope planning estimate';
-  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn primary" data-save-bid="${esc(t.bid_number)}">Save bid</button><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Open official GeM bid ↗')}</div><p id="detailPackWarning" class="section-note" role="status"></p><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section bidder-checks"><h3>Go / No-Go eligibility</h3><div id="detailBuyerReview" aria-live="polite">Checking buyer evidence…</div></section>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Loading product rows…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(t.estimated_value_inr)}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Ask AI · Your next step</h3><p>Make a compliance sheet, match OEMs, review restrictive clauses, draft a buyer clarification or prepare a justified representation. Start with this bid—no lengthy form.</p><button class="btn primary" data-action="ai" data-id="${esc(t.id)}">✦ Choose an action</button><a class="btn ghost" href="/assets/sample-dental-compliance.docx" download>Sample Word draft ↓</a><button class="btn" data-action="prepare-docs" data-id="${esc(t.id)}">Edit Word compliance draft</button></section>`;
+  $('detailBody').innerHTML = `<div class="detail-actions"><button type="button" class="btn primary" data-save-bid="${esc(t.bid_number)}">Save bid</button><button type="button" class="btn ghost" data-action="refresh-detail" data-id="${esc(t.id)}">Refresh bid</button><button type="button" class="btn ghost" data-action="copy-link" data-id="${esc(t.id)}">Copy bid link</button>${sourceLink(t.source_url, 'Open official GeM bid ↗')}</div><p id="detailPackWarning" class="section-note" role="status"></p><p id="detailFeedback" class="section-note" role="status"></p><section class="detail-section"><h3>Representation review</h3><p>${esc(reviewClock(t))}. Confirm the filing window in your GeM seller dashboard.</p><div id="detailRepresentation" aria-live="polite">Checking official documents…</div></section><section class="detail-section bidder-checks"><h3>Go / No-Go eligibility</h3><div id="detailBuyerReview" aria-live="polite">Checking buyer evidence…</div></section>${t.analysis_summary ? `<section class="detail-section"><h3>Bid summary</h3><div class="detail-summary">${esc(t.analysis_summary)}</div></section>` : ''}<section class="detail-section"><h3>Products required</h3><div id="detailProducts" aria-live="polite"><p class="section-note">Loading product rows…</p></div></section>${locationPanel(t)}<section class="detail-section"><h3>Closing & source verification</h3><div class="card-grid"><div class="fact"><span>Status</span><strong>${esc(lifecycleLabel(t))}</strong></div><div class="fact"><span>Closing</span><strong>${esc(deadline(t))}</strong></div><div class="fact"><span>Bid to RA</span><strong>${esc(t.bid_to_ra ?? 'Not verified')}</strong></div><div class="fact"><span>${esc(valueLabel(t))}</span><strong>${money(displayValue(t))}</strong></div><div class="fact"><span>EMD</span><strong>${money(t.emd_inr)}</strong></div><div class="fact"><span>Last source check</span><strong>${esc(stamp(t.last_source_checked_at))}</strong></div><div class="fact"><span>Priority</span><strong>${esc(t.priority || 'Not assigned')}</strong></div><div class="fact"><span>PVMS</span><strong>${esc(t.pvms || 'Not specified')}</strong></div></div>${planningFromEmd(t)?'<p class="section-note">Planning estimate using the recorded EMD × 30. The buyer’s EMD percentage may differ.</p>':''}${isEstimate ? '<p class="section-note">TenderScope planning estimates are not buyer-declared contract values.</p>' : ''}${extended(t) ? `<div class="extension-line"><strong>${Number(t.extension_count) || 1} recorded extension(s)</strong><span>Previous deadline: ${esc(stamp(t.previous_deadline))}</span><span>Current deadline: ${esc(deadline(t))}</span></div>` : ''}${lifecycle(t) === 'CLOSED_PENDING_VERIFICATION' ? '<div class="risk-line">The recorded deadline has passed. This bid remains on verification watch until a source check confirms its status.</div>' : ''}</section>${list(t.risk_flags).length ? `<section class="detail-section"><h3>Risk flags</h3><div class="detail-risk">${list(t.risk_flags).map(risk => `<span class="badge pending">${esc(risk)}</span>`).join('')}</div></section>` : ''}${t.recommended_action ? `<section class="detail-section"><h3>Next action</h3><div class="detail-summary">${esc(t.recommended_action)}</div></section>` : ''}<section class="detail-section"><h3>Official documents</h3><div id="detailDocuments" aria-live="polite"><p class="section-note">Loading document records…</p></div></section><section class="detail-section"><details><summary>Recent changes</summary><div id="detailTimeline" aria-live="polite"><p class="section-note">Loading changes…</p></div></details></section><section class="detail-section"><details><summary>Document version history</summary><div id="detailVersions"><p class="section-note">Loading version records…</p></div></details></section><p class="private-channel">For private buyer messages and seller representations, check your GeM seller account.</p><section class="ai-panel"><h3>Ask AI · Your next step</h3><p>Make a compliance sheet, match OEMs, review restrictive clauses, draft a buyer clarification or prepare a justified representation. Start with this bid—no lengthy form.</p><button class="btn primary" data-action="ai" data-id="${esc(t.id)}">✦ Choose an action</button><a class="btn ghost" href="${t.bid_number==='GEM/2026/B/8300987'?'/assets/sample-medicine-compliance.docx':'/assets/sample-dental-compliance.docx'}" download>Sample Word draft ↓</a><button class="btn" data-action="prepare-docs" data-id="${esc(t.id)}">Edit Word compliance draft</button></section>`;
   Object.entries(priorPanels).forEach(([key,html])=>{if(html)$(key).innerHTML=html;});
   if(versionsOpen)$('detailVersions').closest('details').open=true;
   if(changesOpen)$('detailTimeline').closest('details').open=true;
@@ -489,11 +542,13 @@ async function openBid(id, { updateLocation = true, preserveView = false } = {})
     api(`/tender_events?select=event_code,event_type,detected_at,previous_value,new_value,source_url&tender_id=eq.${encodeURIComponent(id)}&order=detected_at.desc,id.desc&limit=24`),
     api(`/tender_document_versions?select=version_no,snapshot,detected_at&tender_id=eq.${encodeURIComponent(id)}&order=version_no.desc,id.desc&limit=12`),
     packSource,
-    api(`/current_tender_buyer_reviews?select=*&tender_id=eq.${encodeURIComponent(id)}&limit=1`)
+    api(`/current_tender_buyer_reviews?select=*&tender_id=eq.${encodeURIComponent(id)}&limit=1`),
+    api(`/rpc/representation_sources?p_tender_id=${encodeURIComponent(id)}`)
   ]);
   if (request !== S.detailRequest || S.selected?.id !== id) return;
   $('detailBuyerReview').innerHTML=responses[4].status==='fulfilled'?bidderChecks(responses[4].value[0]):'<p class="section-note">Eligibility evidence could not load. Check the official bid PDF.</p>';
   const detailSource=responses[3].status==='fulfilled'?responses[3].value:null;
+  $('detailRepresentation').innerHTML=responses[5]?.status==='fulfilled'?representationPanel(t,responses[5].value,detailSource?.items||[]):'<p>Source review unavailable. Open the official documents below.</p>';
   if(detailSource){
     S.docs.set(id,detailSource.documents);
     S.itemRows.set(id,detailSource.items);
@@ -520,7 +575,7 @@ async function currentPackSource(id,summary=false) {
   if(!data?.version || (!summary && (!data.bid || !Array.isArray(data.items) || !Array.isArray(data.documents))))throw Error('Current buyer documents could not be verified. Refresh the bid and try again.');
   if(!summary){
     const keys=new Set((data.certified_rows||[]).map(row=>row.key));
-    data.items=data.items.map(item=>({...item,specification_verified:!item.source_question && (keys.has(item.item_key) || item.reviewed_specification===true),specs_verified:false}));
+    data.items=data.items.map(item=>({...item,specification_verified:!item.pdf_extracted && !item.source_question && (keys.has(item.item_key) || item.reviewed_specification===true),specs_verified:false}));
   }
   return data;
 }
@@ -605,7 +660,7 @@ async function handleAction(event) {
 }
 function selectView(view) {
   S.view = VIEW[view] ? view : 'active';
-  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['allopen','active','published24','published92','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
+  S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['representation','allopen','active','published24','published92','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
   $('sortOrder').value = S.sort;
   kpis(); filter(); closeSidebar();
 }
