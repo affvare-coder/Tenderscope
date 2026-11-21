@@ -80,3 +80,10 @@ test('ATC-only references are not full buyer specifications even when mistakenly
  const v=assessBoqCompleteness({items:[rowWithPointer],documents:docs,expectedCountEvidence:evidence(1)});
  assert.equal(v.state,'Unverified');assert.equal(v.verified_item_count,0);
 });
+
+test('an unverified buyer specification cannot become an affirmative offer',async()=>{
+ const {complianceRows}=await import('../document-core.mjs');
+ const offer={'1':{verified:true,offer:'QA product',evidence:'Catalogue page 5',response:'Yes',photoRequired:false}};
+ assert.equal(complianceRows([{...row(1),specification_verified:false}],offer)[0].response,'NEEDS REVIEW');
+ assert.equal(complianceRows([row(1)],offer)[0].response,'Yes');
+});

@@ -120,3 +120,13 @@ test('direct draft, annexure and general actions open the requested workspace',a
   assert.equal(ui.node('studio_'+expected).hidden,false);
  }
 });
+
+test('a changed source blocks a generated pack before download and never records an export',async()=>{
+ const ui=harness();let exports=0;
+ await ui.open(ui.options({checkExportSource:async()=>{throw Error('Buyer documents changed');},rememberExport:()=>exports++}));
+ completeProfile(ui);await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,0);assert.equal(exports,0);assert.match(ui.node('studioStatus').textContent,/documents changed/);
+ await ui.open(ui.options({checkExportSource:async()=>{},rememberExport:()=>exports++}));
+ completeProfile(ui);await ui.click('studioDocx');
+ assert.equal(ui.downloads.length,1);assert.equal(exports,1);
+});
