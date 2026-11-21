@@ -87,3 +87,35 @@
 .bidder-facts dd {margin:0;white-space:pre-line;overflow-wrap:anywhere}
 .bidder-facts a {display:block;font-size:.78rem;text-decoration:underline}
 .bidder-checks details p {margin:.55rem 0}
+
+.home-bid-views {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.home-bid-views button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.home-bid-views button:hover,
+.home-bid-views button[aria-pressed="true"] {
+  color: var(--teal-dark);
+  background: var(--teal-wash);
+  border-color: var(--teal);
+}
+.home-bid-views strong {font-variant-numeric: tabular-nums;}
+@media (max-width: 900px) {
+  .home-bid-views {grid-template-columns: repeat(2, minmax(0, 1fr));}
+}
