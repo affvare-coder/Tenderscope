@@ -1,0 +1,24 @@
+name: Reconcile recent representation documents
+on:
+  workflow_dispatch:
+  push:
+    branches: [review/nov21-representation-reconciliation]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node ops/representation/backfill.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: representation-source-review
+          path: representation-reconciliation.json
+          retention-days: 2
