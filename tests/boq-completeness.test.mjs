@@ -93,3 +93,10 @@ test('a buyer conflict and an outstanding full-file review each prevent Complete
  assert.equal(assessBoqCompleteness({items:[row(1)],documents:docs,expectedCountEvidence:pending}).ready,false);
  assert.equal(assessBoqCompleteness({items:[{...row(1),source_question:'Upper or lower?'},row(2)],documents:docs,expectedCountEvidence:evidence(2)}).verified_item_count,1);
 });
+
+test('sixteen source-linked rows remain visible with the official count pending',()=>{
+ const items=Array.from({length:16},(_,i)=>({...row(i+1),specification_verified:false}));
+ const result=assessBoqCompleteness({items,documents:docs});
+ assert.equal(result.label,'16 items extracted · Official total count pending · 0 verified');
+ assert.equal(result.state,'Extracted');assert.equal(result.ready,false);
+});

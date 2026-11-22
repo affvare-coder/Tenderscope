@@ -50,3 +50,11 @@ Follow-up accuracy guard: anonymous SCH/Schedule labels are suppressed as produc
 ## Consolidation — 18 November 2026, 22:02 IST
 
 The latest baseline and unified sequence are in [AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md). PR #11 is already merged; earlier pending-merge notes above are historical. Existing Netlify still serves the November 10 deploy. Live checks: 394.35 MB DB, 569 open published bids, 127 with current rows, approximately 10,250 queued document jobs. Existing hourly/four-hour jobs process subsets, not proven full sweeps. Retention protection, expiry proof refresh, source completeness and health deadlocks remain open. Preserve the no-Make/no-paid-council decision and zero recurring LLM goal. New Gemini review is requested; no new joint approval or deployment is claimed.
+
+## 23 November 2026 · Production source verification
+
+PRs #14 and #15 merged into main on 22 November. The previous public site served `7887d65`. At 00:41 IST on 23 November the feed reported 1,174 open bids, 255 closing in 72 hours, 12 published in 24 hours, and zero certified BOQs. Supabase occupied 442,444,947 bytes. The database guard applies at 485,000,000 bytes.
+
+The scheduled source reviewer reads turnover, relaxation, RA and award-method cells with a page and quotation. It checks the CSV denominator independently of the product importer. In the single-category PDF path it also checks the official open listing, deadline, separate public corrigendum response, consignee quantity and technical parameters before proposing a certification. Other document layouts and unreadable source material remain pending. The existing worker budget is 360 starts per IST day. Source checks use existing invocations.
+
+For GEM/2026/B/8048949 the official CSV SHA-256 begins `f7192142db96`. Separate CSV reads each found 16 rows. The linked buyer specification scan was unresolved. The bidder-facing change separates extracted rows from verified specifications and the official denominator. Release acceptance requires three independently checked scheduled certifications and the live rolling 24-hour result.

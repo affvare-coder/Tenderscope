@@ -67,7 +67,8 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
  const pendingReview=expectedCountEvidence?.full_review_pending===true;
  const complete=expected!==null&&count===expected&&incomplete===0&&specsUnconfirmed===0&&!pendingReview;
  if(pendingReview && count===expected)issues.push('The full attachment set still needs final reconciliation');
- const state=complete?'Complete':count===0?'Unverified':expected===null?'Extracted':'Partial';
+ const extracted=items.filter(item=>item && item.is_current!==false && !unknown(item.name) && !isAnonymousScheduleLabel(item.name) && available.has(fingerprint(item.source_url,item.source_hash))).length;
+ const state=complete?'Complete':expected===null && extracted>0?'Extracted':count===0?'Unverified':'Partial';
  if(expected===null)issues.push('Official expected item count has not been independently verified');
  if(anonymous)issues.push(anonymous+' anonymous schedule label(s) lack product identity');
  if(sourceMismatch)issues.push(sourceMismatch+' row(s) do not match an available official document SHA');
@@ -77,9 +78,9 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
  if(expected!==null&&count!==expected)issues.push('Official count '+expected+' differs from '+count+' verified row(s)');
  const label=state==='Complete'?'Complete · '+count+' of '+expected:
    state==='Partial'?'Partial · '+count+' of '+expected+' items verified':
-   state==='Extracted'?'Extracted · '+count+' verified item(s); total count pending':
-   'Unverified · 0 of '+(expected??'?')+' items';
- return {state,expected_item_count:expected,verified_item_count:count,
+   extracted>0 ? extracted+' item'+(extracted===1?'':'s')+' extracted · '+(expected===null?'Official total count pending':'Official count '+expected)+' · '+count+' verified' :
+   expected===null?'Pending official BOQ':'Unverified · 0 of '+expected+' items';
+ return {state,expected_item_count:expected,extracted_item_count:extracted,verified_item_count:count,
   total_current_rows:items.filter(i=>i&&i.is_current!==false).length,
   specification_confirmed_count:count,ready:complete,issues,items:verified,label};
 }

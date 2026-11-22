@@ -1,0 +1,3 @@
+Apply worker-v32.patch to the deployed version 32 source and copy the four .mjs modules in this directory into worker/. Use the same entry point, deno.json import map and existing authentication as version 32. Apply the automated source review migration before activating the worker. No additional scheduled job or credential is required.
+
+For operational checks, group tenderscope_private.bid_source_checks by outcome. public.verified_boq_bids is the live certification count. Join it to the published24 feed cohort for the rolling fresh readiness denominator. Source checks and extraction rows alone do not establish readiness.
