@@ -1,3 +1,4 @@
+import {reviewSchedulePair} from './linked-schedule.mjs';
 import {createGemClient} from './gem.mjs';
 import {readBidFields} from './eligibility.mjs';
 import {catalogueProof} from './catalogue.mjs';
@@ -52,7 +53,14 @@ export async function inspectParent(bytes,bid,pdfjs,workerModule){
  }finally{await pdf.destroy();}
 }
 
-export async function scheduledSourceReview(db,pdfjs,workerModule){
+export async function scheduledSourceReview(db,pdfjs,workerModule,spare=false){
+ const pair=await db.rpc('claim_bid_source_pair',{p_spare:spare});
+ if(pair){
+  let data;try{data=await reviewSchedulePair(pair,pdfjs,workerModule);}catch(e){data={error:String(e.message).slice(0,120)};}
+  const outcome=await db.rpc('finish_bid_source_pair',{p_id:pair.id,p_url:pair.url,p_token:pair.token,p_data:data});
+  return {status:'linked_schedule_review',bid:pair.bid,result:outcome};
+ }
+ if(spare)return null;
  const job=await db.rpc('claim_bid_source_review');
  if(!job)return null;
  const args={p_id:job.id,p_url:job.url,p_token:job.token};

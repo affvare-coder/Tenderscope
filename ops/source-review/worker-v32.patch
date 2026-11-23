@@ -91,6 +91,16 @@
      getPage: (lane, page = 1) => queued(() => fetchPage(lane, page)),
      fetchLanePage: (lane, page = 1) => queued(() => fetchPage(lane, page)),
      getBoqTitles: () => queued(async () => {
+--- a/worker/queue-slice.mjs
++++ b/worker/queue-slice.mjs
+@@ -13,6 +13,6 @@
+   if(pause)await sleep(pause);
+  }
+  if(results.length<=1)return results[0]||{status:'idle'};
+- return {status:'queue_slice_completed',jobs_processed:results.filter(r=>r.status==='document_processed').length,last_status:results.at(-1).status};
++ return {status:'queue_slice_completed',jobs_processed:results.filter(r=>r.status==='document_processed').length,last_status:results.at(-1).status,cpu_heavy:results.some(r=>r.cpu_heavy===true)};
+ }
+ 
 --- a/supabase/functions/tenderscope-sync/index.ts
 +++ b/supabase/functions/tenderscope-sync/index.ts
 @@ -4,6 +4,8 @@
@@ -102,13 +112,17 @@
  
  Deno.serve(async(request:Request)=>{
   if(request.method!=='POST')return new Response('Method not allowed',{status:405});
-@@ -15,7 +17,8 @@
+@@ -15,7 +17,12 @@
    if(!(await db.rpc('verify_sync_token',{p_token_hash:digest})))return new Response('Unauthorized',{status:401});
    const current=(await db.get('rules_versions?select=config&order=created_at.desc&limit=1'))[0]?.config;
    if(!current||!current.version)throw new Error('rules_not_installed');
 -  const result=await runQueueSlice({run:budgetMs=>runWorker({db,rules:current||RULES,pdfjs,workerModule:pdfjsWorker,budgetMs})});
++  const started=Date.now();
 +  const review=await scheduledSourceReview(db,pdfjs,pdfjsWorker);
 +  const result=review??await runQueueSlice({run:budgetMs=>runWorker({db,rules:current||RULES,pdfjs,workerModule:pdfjsWorker,budgetMs})});
++  if(!review && (['idle','expiry_checked','document_retired','bounded_cadence_completed','publication_checkpointed'].includes(result.status)||['queue_slice_completed','document_processed'].includes(result.status)&&result.cpu_heavy===false) && Date.now()-started<9000){
++   try{const spare=await scheduledSourceReview(db,pdfjs,pdfjsWorker,true);if(spare)result.source_review=spare;}catch{/* The primary queue job already completed. The review lease is retryable. */}
++  }
    return Response.json(result,{headers:{'Cache-Control':'no-store'}});
   }catch(error){return Response.json({status:'failed',error:String(error.message).slice(0,500)},{status:500});}
  });
