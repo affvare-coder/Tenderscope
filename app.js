@@ -330,7 +330,7 @@ function attachmentSpecCell(item) {
  const schedule=sourceLink(item.source_url,'Official BOQ ↗','timeline-source');
  if(!item.spec_url || !Number.isInteger(item.spec_page) || item.spec_page<1)return '<small>PDF row mapping pending</small>'+schedule;
  const url=officialUrl(item.spec_url);
- const source=url?sourceLink(url+'#page='+item.spec_page,'Buyer PDF p. '+item.spec_page+' · row '+esc(item.item_number)+' ↗','timeline-source'):'';
+ const source=url?sourceLink(url+'#page='+item.spec_page,'Buyer PDF p. '+item.spec_page+' · BOQ item '+esc(item.item_number)+' ↗','timeline-source'):'';
  const condition=item.buyer_condition?'<small><b>Buyer compliance condition</b> '+esc(item.buyer_condition)+'</small>':'';
  const question=item.source_question?'<small><b>Buyer clarification needed</b> '+esc(item.source_question)+'</small>':'';
  return (item.pdf_extracted?'<small>Extracted PDF text · verification pending</small>':'')+spec+condition+question+'<small>'+source+' · '+schedule+'</small>';

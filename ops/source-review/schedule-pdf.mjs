@@ -28,6 +28,15 @@ export function compareSchedule(tokens,records) {
  const starts=seven?['Item Title','Item Description','Quantity','Unit of','Consignee ID','Delivery Period (In'].map(k=>data.slice(0,pos).find(t=>flat(t.str)===k)?.transform[4]):[];
  if(starts.some(x=>!Number.isFinite(x)))return null;
  const left=data[pos].transform[4];
+ // Printed spreadsheets sometimes centre the column labels while left-aligning cells.
+ // Use the first complete record to anchor these columns. The numerical and
+ // delivery fields must still reproduce the independently fetched CSV exactly.
+ const first=data.slice(pos,pos+7);
+ if(seven && first.length===7 && first.every((t,i)=>!i||t.transform[4]>first[i-1].transform[4])
+    && [3,4,5,6].every(i=>flat(first[i].str)===flat(records[1][i]))){
+  const x=first.map(t=>t.transform[4]);
+  for(let i=0;i<6;i++)starts[i]=x[i+1]-Math.min(12,(x[i+1]-x[i])/5);
+ }
  for(const [i,r] of rows.entries()){
   if(r.length!==7||r[0].trim()!==String(i+1)||data[cursor]?.str.trim()!==r[0].trim()||Math.abs(data[cursor].transform[4]-left)>13)return null;
   const begin=cursor;cursor++;

@@ -41,3 +41,10 @@ test('printed CSV specification keeps buyer decimal points and flags conflicts',
  assert.match(result[0].question,/different wording/);
  assert.equal(compareSchedule([...header,...body],[columns,row])[0].question,null);
 });
+test('centred PDF column headings can have left-aligned data cells',()=>{
+ const heading=['Item','Number','Item Title','Item Description','Item','Quantity','Unit of','Measure','Consignee ID','Delivery Period (In','number of days)'];
+ const labels=[51,42,153,313,460,450,511,507,578,690,695];
+ const row=['1','Buyer item','Exact wording','10','Nos','Receiver A','20'];
+ const tokens=heading.map((s,i)=>glyph(s,labels[i],570)).concat(row.map((s,i)=>glyph(s,[42,91,270,446,505,560,728][i],547)));
+ const result=compareSchedule(tokens,[columns,row]);assert.equal(result[0].specification,'Exact wording');
+});

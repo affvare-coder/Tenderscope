@@ -57,11 +57,12 @@ export async function scheduledSourceReview(db,pdfjs,workerModule,spare=false){
  const pair=await db.rpc('claim_bid_source_pair',{p_spare:spare});
  if(pair){
   let data;try{data=await reviewSchedulePair(pair,pdfjs,workerModule);}catch(e){data={error:String(e.message).slice(0,120)};}
+  if(data.facts && Object.keys(data.facts).length)await db.rpc('record_bid_header_evidence',{p_id:pair.id,p_url:pair.parent,p_sha:pair.parent_sha,p_facts:data.facts});
   const outcome=await db.rpc('finish_bid_source_pair',{p_id:pair.id,p_url:pair.url,p_token:pair.token,p_data:data});
   return {status:'linked_schedule_review',bid:pair.bid,result:outcome};
  }
- if(spare)return null;
- const job=await db.rpc('claim_bid_source_review');
+ const catalogue=await db.rpc('claim_catalogue_source',{p_spare:spare});
+ const job=catalogue || (!spare && await db.rpc('claim_bid_source_review'));
  if(!job)return null;
  const args={p_id:job.id,p_url:job.url,p_token:job.token};
  let outcome;

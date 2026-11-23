@@ -1,3 +1,4 @@
+import {readBidFields} from './eligibility.mjs';
 import {csvRows} from './products.mjs';
 import {annotationLabel} from './attachment-roles.mjs';
 import {fetchOfficialDocument} from './documents.mjs';
@@ -9,8 +10,9 @@ const key=s=>clean(s).toLowerCase();
 const geom=t=>t.transform[5];
 const pdfOptions=data=>({data,isEvalSupported:false,useWorkerFetch:false,useSystemFonts:false,disableFontFace:true});
 
-export async function checkParent(pdf,job,rows,pdfjs) {
+export async function checkParent(pdf,job,rows,pdfjs,facts={}) {
  if(pdf.numPages>24)return null;
+ const conflicts=new Set();
  const all=[],sections=[],consignees=[],names=[],files=[],pages=[];
  for(let pg=1;pg<=pdf.numPages;pg++){
   const p=await pdf.getPage(pg);
@@ -18,6 +20,11 @@ export async function checkParent(pdf,job,rows,pdfjs) {
   if(!ts.length)return null;
   const strings=ts.map(t=>t.str.trim());const raw=strings.join(' ');
   if(pg===1&&!raw.toUpperCase().match(/GEM\/\d{4}\/B\/\d+/g)?.includes(job.bid))return null;
+  if(pg<=5)for(const [name,fact] of Object.entries(readBidFields(ts,pg))){
+   if(['category','total'].includes(name)||conflicts.has(name))continue;
+   if(facts[name] && facts[name].value!==fact.value){delete facts[name];conflicts.add(name);}
+   else facts[name]=fact;
+  }
   for(const t of ts){
    const s=t.str.trim(),ref={s,pg,y:geom(t),x:t.transform[4]};
    if(/^\/Technical Specifications$/i.test(s))sections.push(ref);
@@ -88,12 +95,13 @@ export async function reviewSchedulePair(job,pdfjs,workerModule){
  }finally{await pdf.destroy();}
  if(!rows||n!==rows.length)return {error:'schedule_layout_or_cells_unresolved'};
  const data={sha:job.sha,csv:job.csv,csv_sha:job.csv_sha,rows,n,parent_sha:job.parent_sha};
- if(job.extra_files || rows.some(r=>r.question))return data;
+ 
  const main=await fetchOfficialDocument(job.parent,{maxBytes:4000000,timeoutMs:8000});
  if(main.content_hash!==job.parent_sha)return {error:'parent_version_changed'};
  const parent=await pdfjs.getDocument(pdfOptions(main.bytes)).promise;
- let proof;try{proof=await checkParent(parent,job,rows,pdfjs);}finally{await parent.destroy();}
- if(!proof)return data;
+ let proof;const facts={};try{proof=await checkParent(parent,job,rows,pdfjs,facts);}finally{await parent.destroy();}
+ data.facts=facts;
+ if(!proof||job.extra_files||rows.some(r=>r.question))return data;
  const gem=createGemClient({maxAttempts:1,requestTimeoutMs:5500,maxPagesPerLane:1});
  try{
   const {rows:live}=await gem.getPage({kind:'bid',status:'ongoing_bids',id:'linked-schedule',term:job.bid},1);

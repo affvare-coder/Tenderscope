@@ -24,7 +24,7 @@ export function attachmentNotes(item){
  return [
   item.buyer_condition && 'Buyer compliance condition: '+item.buyer_condition,
   item.source_question && 'Buyer clarification needed: '+item.source_question,
-  Number.isInteger(item.spec_page) && 'Buyer specification, page '+item.spec_page+', row '+item.item_number
+  Number.isInteger(item.spec_page) && 'Buyer specification, page '+item.spec_page+' (applies to BOQ item '+item.item_number+')'
  ].filter(Boolean);
 }
 

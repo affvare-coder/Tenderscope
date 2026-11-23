@@ -5,7 +5,20 @@
  import {buildLanes,classify,createGemClient,closedDiscoveryWindow,GemError} from './gem.mjs';
  import {fetchOfficialDocument,mergeDocumentFacts,officialDocumentUrl,documentKind} from './documents.mjs';
  import {parseBoqCsv,PRODUCT_PARSER_VERSION,PDF_PRODUCT_PARSER_VERSION} from './products.mjs';
-@@ -281,7 +282,7 @@
+@@ -249,7 +250,11 @@
+    const context=await pageContext(rows.slice(cursor.row||0));
+    while((cursor.row||0)<rows.length&&hasTime()){
+     const row=rows[cursor.row||0];
+-    if(row.official_listing_verified)await processListing(row,job.payload.lane||'candidate-recovery',row.observed_at,null,context.get(row.bid_number));
++    if(row.official_listing_verified && identityPattern.test(row.bid_number)){
++     const live=await gem.getPage({kind:'bid',id:'listing-recheck',status:'ongoing_bids',term:row.bid_number},1);
++     const current=live.rows.find(entry=>entry.bid_number===row.bid_number && Date.parse(entry.closes_at)>clock());
++     if(current)await processListing(current,job.payload.lane||'candidate-recovery',current.observed_at,null,context.get(current.bid_number));
++    }
+     cursor.row=(cursor.row||0)+1;stats.records_scanned++;await checkpoint();
+    }
+    await finish(cursor.row>=rows.length?'succeeded':'retry');
+@@ -281,7 +286,7 @@
     const doc=await fetchOfficialDocument(url,{fetchImpl,previous:(pdfCandidate&&!cached?.scan_complete)||(csv&&!extraction)?{}:prior,
      // Keep attachment fetches and parsing slices bounded.
      ...(!main&&!csv?{maxBytes:24*1024*1024,timeoutMs:20000}:{})});stats.last_gem_contact=observed();stats.documents_checked++;
@@ -14,7 +27,7 @@
     if(pdfCandidate){
      if(!cached||cached.source_hash!==doc.content_hash)cached=await readPdfCache(db,url,doc.content_hash);
      // An old parser's annotation cursor cannot prove that earlier Address
-@@ -291,7 +292,8 @@
+@@ -291,7 +296,8 @@
      const review=documentKind(url)==='specification' || Number.isFinite(published)&&published<=clock()&&clock()-published<=96*3600000;
      const result=await parseCachedPdf({db,url,review,hash:doc.content_hash,bytes:doc.bytes,cached,pdfjs,workerModule,startAnnotationPage,now:observed});
      // Keep page text in the source-hash cache, outside candidate and job payloads.
@@ -24,7 +37,7 @@
      parsed=metadata;parsedThisInvocation=!result.cacheHit;
      stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']=(stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']||0)+1;
      if(main)row={...mergeDocumentFacts(source,parsed),document_verification_status:'VERIFIED',document_verified_at:observed(),document_listing_signature:source.document_listing_signature||listingSignature(source)};
-@@ -319,6 +321,8 @@
+@@ -319,6 +325,8 @@
      // Publish discovered official links immediately; each child verifies availability/hash.
      patch.documents=[record,...attachments.filter(a=>!knownUrls.has(a.url)).map(a=>linkRecord(a.url,a.label))];patch.documents_complete=false;
      const saved=await ingest(patch,lane,observed());
@@ -33,7 +46,7 @@
      // Only a complete, contiguous main-PDF scan can establish the full set
      // of consignees. A partial parse must not erase another delivery city.
      if(main&&parsed?.annotation_scan_complete&&parsed.annotation_start_page===1&&parsed.consignee_locations?.length)
-@@ -331,6 +335,7 @@
+@@ -331,6 +339,7 @@
       try{products=parseBoqCsv(doc.bytes,url,doc.content_hash);}catch(error){parseError=error.message;}
       // Parse failure is recorded independently; it must not hide a published bid or its documents.
       await db.rpc('record_tender_products',{p_tender_id:saved.tender_id,p_url:url,p_hash:doc.content_hash,p_items:products?.items||[],p_parser:PRODUCT_PARSER_VERSION,p_error:parseError});
@@ -80,6 +93,24 @@
  
 --- a/worker/gem.mjs
 +++ b/worker/gem.mjs
+@@ -127,7 +127,7 @@
+ 
+ const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
+ // Exact clinical categories found in the independent buyer-register sample.
+-const clinicalEquipment = /\b(?:human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
++const clinicalEquipment = /\b(?:(?:Ig[MG]\s+)?ELISA\s+kits?|(?:preformed\s+)?molar\s+bands?|dental\s+sandblasters?|endo[ -]?bronchial\s+ultrasound|blood\s+and\s+fluid\s+warmers?|non[ -]*invasive\s+blood\s+pressure|human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
+ const pcaPumpCategory = /^PCA pump(?:\s*\((?:V\d+|Q[1-4])\))*$/i;
+ const clinicalContext = /\b(?:dental|oral|amalgam|endodontic|prosthodontic|orthodontic|medical|surgical|clinical|diagnostic|pharmaceutical|pharma|medicines?|drugs?|patients?|nitrile|examination|sterile|sutures?|catheter|gauze|bandage|anaesthetic|anesthetic|PVMS\s*[:\-]?\s*\d+)\b/i;
+ const definiteGoods = /\b(?:chair|autoclave|equipment|materials?|consumables?|expendables?|instruments?|mask|gloves?|gown|medicine|tablet|capsule|reagent|supplies|inject|syringe|burs?|implant|catheter|scalpel|forceps|apparatus|device|machine|monitor|kit|unit|bed|trolley|wheelchair|drug)\b/i;
+@@ -208,7 +208,7 @@
+ 
+   const content = accepted.map(e => e.text).join('; ');
+   const dentalKeywords = Object.entries(rules.healthcare?.groups ?? {}).filter(([group]) => /^dental/i.test(group)).flatMap(([, v]) => v);
+-  const dentalSpecific = /\b(?:dental|amalgam|endodontic|orthodontic|prosthodontic|dentures?|tooth|teeth|maxillofacial|alginate|GIC|root canal|Cavit G|glass ionomer|RelyX|Ketac|Ketak)\b/i.test(content);
++  const dentalSpecific = /\b(?:dental|molar bands?|amalgam|endodontic|orthodontic|prosthodontic|dentures?|tooth|teeth|maxillofacial|alginate|GIC|root canal|Cavit G|glass ionomer|RelyX|Ketac|Ketak)\b/i.test(content);
+   const dentalMatches = dentalKeywords.some(term => !ambiguous.has(words(term)) && matchesTerm(content, term));
+   const pharma = Object.entries(rules.healthcare?.groups ?? {}).filter(([group]) => /medicines/i.test(group)).flatMap(([, v]) => v).some(term => !ambiguous.has(words(term)) && matchesTerm(content, term));
+   result.category = dentalSpecific || dentalMatches ? 'Dental' : pharma || /\b(?:medicines?|pharma|drugs?)\b/i.test(content) ? 'Pharma' : /\b(?:AFMRC|ANV|Anveshan|research)\b/i.test(content) ? 'Research' : 'Medical';
 @@ -401,6 +401,10 @@
    }
  
