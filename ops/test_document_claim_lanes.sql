@@ -4,6 +4,7 @@ create temp table sync_state (like public.sync_state including defaults includin
 create temp table sync_runs (like public.sync_runs including defaults including constraints including indexes);
 create temp table sync_job_failures (like public.sync_job_failures including defaults including constraints including indexes);
 create temp table tenders (like public.tenders including defaults including constraints including indexes);
+create temp table tender_documents (like public.tender_documents including defaults including constraints including indexes);
 create temp table tender_items (like public.tender_items including defaults including constraints including indexes);
 do $install$
 declare definition text;
@@ -11,7 +12,8 @@ begin
  perform set_config('search_path','',true);
  definition:=pg_get_viewdef('public.queued_document_lanes'::regclass,true);
  execute 'create temp view queued_document_lanes as '||replace(definition,'public.','pg_temp.');
- execute replace(pg_get_functiondef('public.claim_sync_job(text,integer)'::regprocedure),'public.','pg_temp.');
+ execute replace(replace(pg_get_functiondef('public.claim_sync_job(text,integer)'::regprocedure),
+   'public.','pg_temp.'),'tenderscope:single-worker','tenderscope:claim-fixture:'||pg_backend_pid());
 end $install$;
 insert into pg_temp.sync_state(key,state) values ('queue_dispatch','{"discovery_streak":12}');
 insert into pg_temp.sync_runs(mode) values('hourly');
@@ -59,6 +61,53 @@ do $test$ declare expected text; chosen jsonb; begin
   chosen:=pg_temp.claim_sync_job('attachment-fixture',30);
   if chosen->>'dedupe_key' is distinct from expected then raise exception 'Expected %, got %',expected,chosen->>'dedupe_key'; end if;
   update pg_temp.sync_jobs set state='succeeded' where id=(chosen->>'id')::uuid;
+ end loop;
+end $test$;
+
+-- A main PDF can have source links before the ordinary parent worker runs.
+-- Mix existing children, a parent with no child and a child waiting for retry.
+update pg_temp.sync_jobs set state='succeeded';
+insert into pg_temp.tenders (source,bid_number,title,category,buyer,location,published_at,deadline,
+  status,source_url,value_basis,reviewed_at)
+select 'gem',label,'Consumables','medical','Test buyer','Test location',now()-age,now()+interval '10 days',
+  'published','https://bidplus.gem.gov.in/showbidDocument/'||n,'unavailable',now()
+from (values ('paired',101,interval '8 hours'),('orphan',102,interval '9 hours'),
+             ('backoff',103,interval '12 hours'),('newest',104,interval '1 hour'),
+             ('unpaired',105,interval '10 hours')) v(label,n,age);
+
+insert into pg_temp.tender_documents(tender_id,kind,title,official_url,document_key,availability,content_hash)
+select id,'bid','Main bid',source_url,'bid','available',repeat('a',64) from pg_temp.tenders
+union all
+select id,'boq','BOQ','https://mkp.gem.gov.in/'||bid_number||'.csv','boq','unverified',null
+from pg_temp.tenders where bid_number <> 'newest'
+union all
+select id,'specification','Buyer specification','https://mkp.gem.gov.in/'||bid_number||'.pdf',
+  'specification','available',repeat('b',64) from pg_temp.tenders where bid_number='paired';
+
+insert into pg_temp.sync_jobs(run_id,mode,dedupe_key,available_at,payload)
+select r.id,r.mode,t.bid_number||'-'||d.kind,
+  case when t.bid_number='backoff' and d.kind='boq' then now()+interval '2 hours' else now() end,
+  jsonb_build_object('kind','document','url',d.official_url,
+    'lane',case when d.kind='bid' then 'ordinary-parent' else 'official-pdf-attachment' end,
+    'row',jsonb_build_object('bid_number',t.bid_number))
+from pg_temp.sync_runs r cross join pg_temp.tenders t
+join pg_temp.tender_documents d on d.tender_id=t.id
+where d.kind='bid' or (d.kind='boq' and t.bid_number<>'orphan');
+
+do $test$ declare expected text; chosen jsonb; begin
+ foreach expected in array array['paired-boq','unpaired-boq','orphan-bid','newest-bid'] loop
+  update pg_temp.sync_state set state='{"document_turn":0,"discovery_streak":12}' where key='queue_dispatch';
+  chosen:=pg_temp.claim_sync_job('fresh-boq-fixture',30);
+  if chosen->>'dedupe_key' is distinct from expected then
+    raise exception 'Expected %, got %',expected,chosen->>'dedupe_key';
+  end if;
+  if pg_temp.claim_sync_job('overlapping-worker',30) is not null then raise exception 'Concurrent lease'; end if;
+  update pg_temp.sync_jobs set state='succeeded' where id=(chosen->>'id')::uuid;
+  -- A successful child normally writes its hash and availability.
+  if chosen->>'dedupe_key' like '%-boq' then
+   update pg_temp.tender_documents set availability='available',content_hash=repeat('c',64)
+   where official_url=chosen#>>'{payload,url}';
+  end if;
  end loop;
 end $test$;
 rollback;
