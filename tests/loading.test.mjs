@@ -44,3 +44,41 @@ test('an older in-flight response cannot replace the newer search',async()=>{
  const {ctx,get}=setup();ctx.feed=feed;vm.runInContext(`this.pending=[];api=path=>new Promise(resolve=>pending.push({path,resolve}));`,ctx);
  const first=ctx.run();get('searchInput').value='implant';const next=ctx.run();ctx.pending[1].resolve({...feed,rows:[{...bid,id:'new'}]});await next;ctx.pending[0].resolve(feed);await first;assert.equal(ctx.state.all[0].id,'new');assert.equal(ctx.state.loading,false);
 });
+test('eligibility filters are sent to the feed and an older server cannot return unfiltered matches',async()=>{
+ const {ctx,get,storage}=setup();
+ get('raFilter').value='no'; get('turnoverFilter').value='gem'; get('evaluationFilter').value='item';
+ ctx.feed=feed;
+ vm.runInContext(`this.requests=[];api=async path=>{requests.push(path);return feed;};`,ctx);
+ await ctx.run();
+ assert.match(get('errorState').textContent,/Eligibility filters are temporarily unavailable/);
+ assert.equal(ctx.state.all.length,0);
+ ctx.feed={...feed,total:1,features:{eligibility_search:true,closed_watch:true}};
+ await ctx.run();
+ const {searchParams}=new URL(ctx.requests.at(-1),'https://example.test');
+ const filters=Object.fromEntries(Object.entries(JSON.parse(searchParams.get('p_filters'))).filter(([,value])=>value));
+ assert.deepEqual(filters,{ra:'no',turnover_method:'gem',evaluation:'item'});
+ assert.equal(ctx.state.all.length,1);
+ assert.equal(storage.size,0);
+ vm.runInContext(`api=async()=>{throw new Error('timeout')};`,ctx);
+ await ctx.run();
+ assert.equal(ctx.state.all.length,0);
+ assert.equal(get('resultCount').textContent,'Bid data unavailable');
+});
+test('closed search uses retained public rows, a server total, and a separate closing-window scope',async()=>{
+ const {ctx,get}=setup();
+ ctx.state.view='watch';
+ ctx.state.sort='deadline';
+ get('urgencyFilter').value='critical';
+ get('searchInput').value='forceps';
+ ctx.feed={...feed,total:47,counts:{watch:64,allopen:200},features:{eligibility_search:true,closed_watch:true},
+   rows:[{...bid,deadline:new Date(Date.now()-3600000).toISOString(),lifecycle_state:'CLOSED_PENDING_VERIFICATION',location_class:'DELHI'}]};
+ vm.runInContext(`this.requests=[];api=async path=>{requests.push(path);return feed;};`,ctx);
+ await ctx.run();
+ const {searchParams}=new URL(ctx.requests[0],'https://example.test');
+ assert.equal(searchParams.get('p_view'),'watch');
+ assert.equal(searchParams.get('p_search'),'forceps');
+ assert.equal(JSON.parse(searchParams.get('p_filters')).urgency,'');
+ assert.equal(ctx.state.all.length,1);
+ assert.match(get('resultCount').textContent,/47 bids awaiting verification.*most recently closed first/);
+ assert.equal(get('loadMoreBtn').hidden,false);
+});

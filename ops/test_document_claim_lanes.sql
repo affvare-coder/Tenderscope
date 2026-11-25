@@ -5,6 +5,7 @@ create temp table sync_runs (like public.sync_runs including defaults including 
 create temp table sync_job_failures (like public.sync_job_failures including defaults including constraints including indexes);
 create temp table tenders (like public.tenders including defaults including constraints including indexes);
 create temp table tender_documents (like public.tender_documents including defaults including constraints including indexes);
+create temp table tender_events (like public.tender_events including defaults including constraints including indexes);
 create temp table tender_items (like public.tender_items including defaults including constraints including indexes);
 do $install$
 declare definition text;
