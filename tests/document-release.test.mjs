@@ -44,6 +44,14 @@ test('maximum length contact and licence data flow in ordinary bodies without ex
 test('a conflicting attachment row exports both buyer requirements and its page without Yes',async()=>{
  const dental={...item,specification:'Size: 0.016 lower',specification_verified:true,buyer_condition:'Five years in market',source_question:'The item says upper. Confirm the arch.',spec_url:'https://gem.gov.in/bbqr.pdf',spec_page:1};
  const {document}=await parts(await complianceDocx({bid,profile,items:[dental],offers:{A:offer}}));
- for(const expected of [dental.specification,dental.buyer_condition,dental.source_question,'page 1, row 1','NEEDS REVIEW'])assert.ok(document.includes(expected),expected);
+ for(const expected of [dental.specification,dental.buyer_condition,dental.source_question,'page 1 (applies to BOQ item 1)','NEEDS REVIEW'])assert.ok(document.includes(expected),expected);
  assert.doesNotMatch(document,/>Yes</);
+});
+test('identical buyer conditions retain their full text once across an editable offer',async()=>{
+ const common='Both products require documentary proof from the same issuing authority.';
+ const two=[1,2].map(n=>({...item,item_number:n,item_key:String(n),spec_url:'https://gem.gov.in/spec.pdf',spec_page:1,buyer_condition:common}));
+ const {document}=await parts(await complianceDocx({bid,profile,items:two}));
+ assert.equal(document.split(common).length-1,1);
+ assert.ok(document.includes('Buyer conditions applying to every item'));
+ assert.ok(document.includes('applies to BOQ item 2'));
 });

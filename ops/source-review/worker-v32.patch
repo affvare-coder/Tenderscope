@@ -1,0 +1,159 @@
+--- a/worker/sync.mjs
++++ b/worker/sync.mjs
+@@ -1,3 +1,4 @@
++import {officialScheduleCount} from './official-count.mjs';
+ import {buildLanes,classify,createGemClient,closedDiscoveryWindow,GemError} from './gem.mjs';
+ import {fetchOfficialDocument,mergeDocumentFacts,officialDocumentUrl,documentKind} from './documents.mjs';
+ import {parseBoqCsv,PRODUCT_PARSER_VERSION,PDF_PRODUCT_PARSER_VERSION} from './products.mjs';
+@@ -249,7 +250,11 @@
+    const context=await pageContext(rows.slice(cursor.row||0));
+    while((cursor.row||0)<rows.length&&hasTime()){
+     const row=rows[cursor.row||0];
+-    if(row.official_listing_verified)await processListing(row,job.payload.lane||'candidate-recovery',row.observed_at,null,context.get(row.bid_number));
++    if(row.official_listing_verified && identityPattern.test(row.bid_number)){
++     const live=await gem.getPage({kind:'bid',id:'listing-recheck',status:'ongoing_bids',term:row.bid_number},1);
++     const current=live.rows.find(entry=>entry.bid_number===row.bid_number && Date.parse(entry.closes_at)>clock());
++     if(current)await processListing(current,job.payload.lane||'candidate-recovery',current.observed_at,null,context.get(current.bid_number));
++    }
+     cursor.row=(cursor.row||0)+1;stats.records_scanned++;await checkpoint();
+    }
+    await finish(cursor.row>=rows.length?'succeeded':'retry');
+@@ -281,7 +286,7 @@
+    const doc=await fetchOfficialDocument(url,{fetchImpl,previous:(pdfCandidate&&!cached?.scan_complete)||(csv&&!extraction)?{}:prior,
+     // Keep attachment fetches and parsing slices bounded.
+     ...(!main&&!csv?{maxBytes:24*1024*1024,timeoutMs:20000}:{})});stats.last_gem_contact=observed();stats.documents_checked++;
+-   let row=source,parsed;
++   let row=source,parsed,headerFacts;
+    if(pdfCandidate){
+     if(!cached||cached.source_hash!==doc.content_hash)cached=await readPdfCache(db,url,doc.content_hash);
+     // An old parser's annotation cursor cannot prove that earlier Address
+@@ -291,7 +296,8 @@
+     const review=documentKind(url)==='specification' || Number.isFinite(published)&&published<=clock()&&clock()-published<=96*3600000;
+     const result=await parseCachedPdf({db,url,review,hash:doc.content_hash,bytes:doc.bytes,cached,pdfjs,workerModule,startAnnotationPage,now:observed});
+     // Keep page text in the source-hash cache, outside candidate and job payloads.
+-    const {review_pages,review_limited,filing_hours,...metadata}=result.parsed;
++    const {review_pages,review_limited,filing_hours,header_facts,...metadata}=result.parsed;
++    headerFacts=header_facts;
+     parsed=metadata;parsedThisInvocation=!result.cacheHit;
+     stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']=(stats[result.cacheHit?'pdf_cache_hits':'pdf_parse_chunks']||0)+1;
+     if(main)row={...mergeDocumentFacts(source,parsed),document_verification_status:'VERIFIED',document_verified_at:observed(),document_listing_signature:source.document_listing_signature||listingSignature(source)};
+@@ -319,6 +325,8 @@
+     // Publish discovered official links immediately; each child verifies availability/hash.
+     patch.documents=[record,...attachments.filter(a=>!knownUrls.has(a.url)).map(a=>linkRecord(a.url,a.label))];patch.documents_complete=false;
+     const saved=await ingest(patch,lane,observed());
++    if(main&&parsed?.bid_number===source.bid_number&&headerFacts&&Object.keys(headerFacts).length)
++     await db.rpc('record_bid_header_evidence',{p_id:saved.tender_id,p_url:url,p_sha:doc.content_hash,p_facts:headerFacts});
+     // Only a complete, contiguous main-PDF scan can establish the full set
+     // of consignees. A partial parse must not erase another delivery city.
+     if(main&&parsed?.annotation_scan_complete&&parsed.annotation_start_page===1&&parsed.consignee_locations?.length)
+@@ -331,6 +339,7 @@
+      try{products=parseBoqCsv(doc.bytes,url,doc.content_hash);}catch(error){parseError=error.message;}
+      // Parse failure is recorded independently; it must not hide a published bid or its documents.
+      await db.rpc('record_tender_products',{p_tender_id:saved.tender_id,p_url:url,p_hash:doc.content_hash,p_items:products?.items||[],p_parser:PRODUCT_PARSER_VERSION,p_error:parseError});
++     if(!parseError){const n=officialScheduleCount(doc.bytes);if(n)await db.rpc('record_schedule_denominator',{p_id:saved.tender_id,p_url:url,p_sha:doc.content_hash,p_count:n});}
+     }
+     await db.patch('tender_documents',`tender_id=eq.${saved.tender_id}&official_url=eq.${encodeURIComponent(url)}`,{etag:doc.etag,last_modified:doc.last_modified});
+     const attached=parsed?attachments:main?knownLinks.filter(d=>d.official_url!==url).map(d=>({url:d.official_url})):[];
+--- a/worker/documents.mjs
++++ b/worker/documents.mjs
+@@ -1,3 +1,4 @@
++import {readBidFields} from './eligibility.mjs';
+ import {specificationTable} from './specification-table.mjs';
+ import {officialAttachmentKind,annotationLabel} from './attachment-roles.mjs';
+ import {readPage,pdfLines} from './representation.mjs';
+@@ -137,6 +138,7 @@
+   const task=pdfjs.getDocument({data:bytes,isEvalSupported:false,useSystemFonts:false,disableFontFace:true,useWorkerFetch:false});
+   const pdf=await task.promise;
+   try {
++    const headerFacts={},conflictingFacts=new Set();
+     const reviewPages=[],texts=[],annotations=[],locations=[],productItems=[];let productReview=false;
+     if(!Number.isSafeInteger(pdf.numPages)||pdf.numPages<1)throw new Error('pdf_page_count_invalid');
+     const start=Math.max(1,Math.min(pdf.numPages,startAnnotationPage));
+@@ -146,6 +148,11 @@
+       const page=await pdf.getPage(n);let tokens=[];
+       if(n<=maxTextPages || (n>=start&&n<=end)) {
+         const content=await page.getTextContent();tokens=content.items;
++        if(n<=maxTextPages && n<=5)for(const [key,fact] of Object.entries(readBidFields(tokens,n))){
++          if(key==='category'||key==='total')continue;
++          if(headerFacts[key] && headerFacts[key].value!==fact.value)conflictingFacts.add(key);
++          else headerFacts[key]=fact;
++        }
+         if(reviewUrl&&n>=start&&n<=end){
+           const role=documentKind(reviewUrl);
+           const evidence=readPage(n,pdfLines(content.items),role!=='bid');
+@@ -170,7 +177,8 @@
+       }
+       page.cleanup();
+     }
+-    return {review_pages:reviewPages,...parseDocumentText(texts.join('\n'),annotations),product_items:productItems,product_table_needs_review:productReview,consignee_locations:mergeConsigneeLocations(locations),page_count:pdf.numPages,text_pages_parsed:Math.min(pdf.numPages,maxTextPages),annotation_start_page:start,annotation_end_page:end,annotation_next_page:end<pdf.numPages?end+1:null,annotation_scan_complete:end===pdf.numPages,document_parse_scope:'metadata_and_resumable_links_and_consignee_addresses'};
++    for(const key of conflictingFacts)delete headerFacts[key];
++    return {header_facts:headerFacts,review_pages:reviewPages,...parseDocumentText(texts.join('\n'),annotations),product_items:productItems,product_table_needs_review:productReview,consignee_locations:mergeConsigneeLocations(locations),page_count:pdf.numPages,text_pages_parsed:Math.min(pdf.numPages,maxTextPages),annotation_start_page:start,annotation_end_page:end,annotation_next_page:end<pdf.numPages?end+1:null,annotation_scan_complete:end===pdf.numPages,document_parse_scope:'metadata_and_resumable_links_and_consignee_addresses'};
+   } finally {await pdf.destroy();}
+ }
+ 
+--- a/worker/gem.mjs
++++ b/worker/gem.mjs
+@@ -127,7 +127,7 @@
+ 
+ const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
+ // Exact clinical categories found in the independent buyer-register sample.
+-const clinicalEquipment = /\b(?:human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
++const clinicalEquipment = /\b(?:(?:Ig[MG]\s+)?ELISA\s+kits?|(?:preformed\s+)?molar\s+bands?|dental\s+sandblasters?|endo[ -]?bronchial\s+ultrasound|blood\s+and\s+fluid\s+warmers?|non[ -]*invasive\s+blood\s+pressure|human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
+ const pcaPumpCategory = /^PCA pump(?:\s*\((?:V\d+|Q[1-4])\))*$/i;
+ const clinicalContext = /\b(?:dental|oral|amalgam|endodontic|prosthodontic|orthodontic|medical|surgical|clinical|diagnostic|pharmaceutical|pharma|medicines?|drugs?|patients?|nitrile|examination|sterile|sutures?|catheter|gauze|bandage|anaesthetic|anesthetic|PVMS\s*[:\-]?\s*\d+)\b/i;
+ const definiteGoods = /\b(?:chair|autoclave|equipment|materials?|consumables?|expendables?|instruments?|mask|gloves?|gown|medicine|tablet|capsule|reagent|supplies|inject|syringe|burs?|implant|catheter|scalpel|forceps|apparatus|device|machine|monitor|kit|unit|bed|trolley|wheelchair|drug)\b/i;
+@@ -208,7 +208,7 @@
+ 
+   const content = accepted.map(e => e.text).join('; ');
+   const dentalKeywords = Object.entries(rules.healthcare?.groups ?? {}).filter(([group]) => /^dental/i.test(group)).flatMap(([, v]) => v);
+-  const dentalSpecific = /\b(?:dental|amalgam|endodontic|orthodontic|prosthodontic|dentures?|tooth|teeth|maxillofacial|alginate|GIC|root canal|Cavit G|glass ionomer|RelyX|Ketac|Ketak)\b/i.test(content);
++  const dentalSpecific = /\b(?:dental|molar bands?|amalgam|endodontic|orthodontic|prosthodontic|dentures?|tooth|teeth|maxillofacial|alginate|GIC|root canal|Cavit G|glass ionomer|RelyX|Ketac|Ketak)\b/i.test(content);
+   const dentalMatches = dentalKeywords.some(term => !ambiguous.has(words(term)) && matchesTerm(content, term));
+   const pharma = Object.entries(rules.healthcare?.groups ?? {}).filter(([group]) => /medicines/i.test(group)).flatMap(([, v]) => v).some(term => !ambiguous.has(words(term)) && matchesTerm(content, term));
+   result.category = dentalSpecific || dentalMatches ? 'Dental' : pharma || /\b(?:medicines?|pharma|drugs?)\b/i.test(content) ? 'Pharma' : /\b(?:AFMRC|ANV|Anveshan|research)\b/i.test(content) ? 'Research' : 'Medical';
+@@ -401,6 +401,10 @@
+   }
+ 
+   return {
++    hasNoPublicCorrigendum: id => queued(async()=>{
++      if(!/^\d+$/.test(id))return false;
++      return (await post('bidding/bid/viewCorrigendum/'+id,'all-bids',null))===0;
++    }),
+     getPage: (lane, page = 1) => queued(() => fetchPage(lane, page)),
+     fetchLanePage: (lane, page = 1) => queued(() => fetchPage(lane, page)),
+     getBoqTitles: () => queued(async () => {
+--- a/worker/queue-slice.mjs
++++ b/worker/queue-slice.mjs
+@@ -13,6 +13,6 @@
+   if(pause)await sleep(pause);
+  }
+  if(results.length<=1)return results[0]||{status:'idle'};
+- return {status:'queue_slice_completed',jobs_processed:results.filter(r=>r.status==='document_processed').length,last_status:results.at(-1).status};
++ return {status:'queue_slice_completed',jobs_processed:results.filter(r=>r.status==='document_processed').length,last_status:results.at(-1).status,cpu_heavy:results.some(r=>r.cpu_heavy===true)};
+ }
+ 
+--- a/supabase/functions/tenderscope-sync/index.ts
++++ b/supabase/functions/tenderscope-sync/index.ts
+@@ -4,6 +4,8 @@
+ import {sha256} from '../../../worker/documents.mjs';
+ import * as pdfjs from 'npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs';
+ import * as pdfjsWorker from 'npm:pdfjs-dist@4.10.38/legacy/build/pdf.worker.mjs';
++
++import {scheduledSourceReview} from '../../../worker/review-worker.mjs';
+ 
+ Deno.serve(async(request:Request)=>{
+  if(request.method!=='POST')return new Response('Method not allowed',{status:405});
+@@ -15,7 +17,12 @@
+   if(!(await db.rpc('verify_sync_token',{p_token_hash:digest})))return new Response('Unauthorized',{status:401});
+   const current=(await db.get('rules_versions?select=config&order=created_at.desc&limit=1'))[0]?.config;
+   if(!current||!current.version)throw new Error('rules_not_installed');
+-  const result=await runQueueSlice({run:budgetMs=>runWorker({db,rules:current||RULES,pdfjs,workerModule:pdfjsWorker,budgetMs})});
++  const started=Date.now();
++  const review=await scheduledSourceReview(db,pdfjs,pdfjsWorker);
++  const result=review??await runQueueSlice({run:budgetMs=>runWorker({db,rules:current||RULES,pdfjs,workerModule:pdfjsWorker,budgetMs})});
++  if(!review && (['idle','expiry_checked','document_retired','bounded_cadence_completed','publication_checkpointed'].includes(result.status)||['queue_slice_completed','document_processed'].includes(result.status)&&result.cpu_heavy===false) && Date.now()-started<9000){
++   try{const spare=await scheduledSourceReview(db,pdfjs,pdfjsWorker,true);if(spare)result.source_review=spare;}catch{/* The primary queue job already completed. The review lease is retryable. */}
++  }
+   return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+  }catch(error){return Response.json({status:'failed',error:String(error.message).slice(0,500)},{status:500});}
+ });

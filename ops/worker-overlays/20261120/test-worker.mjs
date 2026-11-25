@@ -10,10 +10,14 @@ const {parseBoqCsv} = await import(pathToFileURL(resolve(root, 'worker/products.
 const {classify} = await import(pathToFileURL(resolve(root, 'worker/gem.mjs')));
 const rules = JSON.parse(await readFile(rulesPath,'utf8'));
 const bid = title => ({bid_number:'GEM/2026/B/1000000',title,items:[title],q2_status:'Q2'});
-for (const title of ['PCA PUMP','Emergency Recovery Trolley (V2)','Automated Human Milk Analyzer','Automatic Human Milk Pasteurizer']) {
+for (const title of ['PCA PUMP','Emergency Recovery Trolley (V2)','Automated Human Milk Analyzer','Automatic Human Milk Pasteurizer',
+  'HAV IgM ELISA kit,HEV IgM ELISA kit','Preformed Molar bands','Dental sandblaster with pencil nozzle',
+  'Endo Bronchial Ultrasound System (EBUS)','Blood and Fluid Warmer (V2)',
+  'Non- Invasive blood pressure (NIBP) system with data acquisition']) {
   assert.equal(classify(bid(title),rules).included,true,title);
 }
-for (const title of ['industrial milk pasteurizer','warehouse trolley','industrial PCA pump housing','web space and annual maintenance services']) {
+for (const title of ['industrial milk pasteurizer','warehouse trolley','industrial PCA pump housing','web space and annual maintenance services',
+  'industrial sandblaster with pencil nozzle','industrial fluid warmer','pressure monitoring for pipe fittings']) {
   assert.equal(classify(bid(title),rules).included,false,title);
 }
 const csv = 'Item Number,Item Title,Item Description,Item Quantity,Unit of Measure,Consignee ID\r\n'

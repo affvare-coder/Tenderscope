@@ -1,0 +1,7 @@
+Apply worker-v32.patch to the deployed v32 source, then copy the six adjacent .mjs modules into worker/. Preserve the original deno.json import map and authentication. The v37 production bundle has SHA-256 9a205b2d2c86ce4201c8ed2db3aa2bdeacca2bde4943daedbcdef118e6bcc129. Apply the migrations for automated source review, linked schedule reconciliation, catalogue priority and listing rechecks in timestamp order. Every stage uses the existing budgeted scheduler.
+
+The linked-schedule path reads the GeM CSV independently and compares each row with the separate buyer specification PDF. Complete requires current buyer PDF links, matching quantities and consignees, embedded ATC, every active attachment, a current deadline and the official corrigendum response. Ambiguous layouts, unreadable scans, missing references and conflicting wording remain open. Source-backed eligibility entries carry the page and quotation.
+
+A catalogue review reserves one additional existing turn in eight for fresh or closing-soon sources. The hourly listing recheck reservation recovers earlier exclusions through a fresh official lookup. It uses the ordinary discovery writer and preserves first observation.
+
+Group tenderscope_private.bid_source_checks by outcome for operational checks. public.verified_boq_bids is the live certification count. Intersect it with the published24 feed cohort to calculate rolling fresh BOQ readiness. Technical offer readiness also requires participant and OEM evidence.

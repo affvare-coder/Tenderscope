@@ -47,17 +47,24 @@ function packDoc(bid,title,sections){return Packer.toBlob(new Document({creator:
 const border={style:BorderStyle.SINGLE,size:4,color:'D9D9D9'};
 function cell(children,width,header=false){return new TableCell({width:{size:width,type:WidthType.DXA},margins:{top:90,bottom:90,left:90,right:90},verticalAlign:VerticalAlign.CENTER,shading:header?{fill:'E8EDF2'}:undefined,borders:{top:border,bottom:border,left:border,right:border},children});}
 function specFragments(value){let rest=text(value);const parts=[];while(rest.length>1000){let cut=rest.lastIndexOf(' ',1000);if(cut<500)cut=1000;else cut++;parts.push(rest.slice(0,cut));rest=rest.slice(cut);}parts.push(rest);return parts;}
+function coverageFollowup(coverage,expected){
+ if(expected?.full_review_pending && coverage.verified_item_count===coverage.expected_item_count)return 'All listed rows have a specification match. The full attachment set still needs review.';
+ if(coverage.state==='Complete')return 'The participant must verify the offered products and evidence.';
+ return 'Check outstanding rows and specifications against the official BOQ.';
+}
 export async function complianceDocx({bid,profile,items,sourceItems=items,documents=[],expectedCountEvidence=null,offers={},images={},review={}}){
  validateProfile(profile);const rows=complianceRows(items,offers),verification=documentVerification({bid,profile,items,sourceItems,documents,expectedCountEvidence,offers,images,review}),ready=verification.ready;
  const coverage=verification.boq;
- const coverageNote=ready?[]:[p(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. This draft contains ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`,true)];
- const displayRows=rows.flatMap(i=>specFragments([i.boq_specification!=null?'BOQ description: '+i.boq_specification:'',i.spec_url?'Buyer PDF: '+i.specification:i.specification,...attachmentNotes(i)].filter(Boolean).join('\n')).map((specification,index)=>({...i,specification,continuation:index>0})));
+ const coverageNote=ready?[]:[p(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. This draft contains ${rows.length} product rows. ${coverageFollowup(coverage,expectedCountEvidence)}`,true)];
+ const sharedCondition=rows.length>1 && rows[0].buyer_condition && rows.every(i=>i.buyer_condition===rows[0].buyer_condition) ? rows[0].buyer_condition : null;
+ const common=sharedCondition?[p('Buyer conditions applying to every item',true),...lines(sharedCondition)]:[];
+ const displayRows=rows.flatMap(i=>specFragments([i.boq_specification!=null?'BOQ description: '+i.boq_specification:'',i.spec_url?'Buyer PDF: '+i.specification:i.specification,...attachmentNotes(sharedCondition?{...i,buyer_condition:null}:i)].filter(Boolean).join('\n')).map((specification,index)=>({...i,specification,continuation:index>0})));
  const widths=rows.some(i=>i.spec_url)?[1900,3950,1660,1250,1000]:[1800,2850,2400,1600,1000],headings=['Item and quantity','Exact buyer specification','Offered OEM product and pack','Product photograph','Status'];
  const table=new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:widths,rows:[new TableRow({tableHeader:true,children:headings.map((h,j)=>cell([p(h,true)],widths[j],true))}),...displayRows.map(i=>new TableRow({cantSplit:true,children:[
  cell(lines(`${i.continuation?'Continued item ':''}${i.item_number||''}. ${i.name}\nQuantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?'\nPack: '+i.pack:''}${i.pvms||i.niv?'\nPVMS/NIV: '+(i.pvms||i.niv):''}${i.consignee?'\nConsignee: '+i.consignee:''}`),widths[0]),
  cell(lines(i.specification||'Source specification pending'),widths[1]),cell(lines([i.offer||'Offer selection pending',i.evidence,i.photoVerified&&i.photoSource?'Photo: '+i.photoSource:''].filter(Boolean).join('\n')),widths[2]),
  cell(i.photo&&i.photoVerified?[new Paragraph({children:[image(i.photo,90,88)],alignment:AlignmentType.CENTER})]:[p('Photo review pending')],widths[3]),cell([p(i.response,true)],widths[4])]}))]});
- const intro=[p('To,'),p('The Competent Authority',true),...lines([bid.buyer,bid.buyer_address].filter(Boolean).join('\n')),p(`Subject: Technical offer for ${bid.title||bid.bid_number}`,true),p('We submit the following item-wise technical offer against the buyer requirements.'),...coverageNote,table,...closing(profile,images,ready)];
+ const intro=[p('To,'),p('The Competent Authority',true),...lines([bid.buyer,bid.buyer_address].filter(Boolean).join('\n')),p(`Subject: Technical offer for ${bid.title||bid.bid_number}`,true),p('We submit the following item-wise technical offer against the buyer requirements.'),...coverageNote,table,...common,...closing(profile,images,ready)];
  return packDoc(bid,'Technical Offer',[ordinarySection({bid,profile,images},intro,ready)]);
 }
 export async function atcAcceptanceDocx({bid,profile,clauses=[],amendments=[],acceptanceAuthorized=false,images={},review={}}){
@@ -98,7 +105,7 @@ export async function compliancePdf({bid,profile,items,sourceItems=items,documen
  const newPage=()=>{page=doc.addPage([595.28,841.89]);y=672;};
  const put=(v,size=10)=>{for(const line of wrap(font,v,size,505)){if(y<130)newPage();page.drawText(line,{x:45,y,size,font});y-=size+5;}};
  newPage();if(clean(profile.address))put('Registered address: '+profile.address);const contact=[['Email',profile.email],['Phone',profile.phone]].filter(([,v])=>clean(v)).map(([k,v])=>`${k}: ${v}`).join(' | ');if(contact)put(contact);if(identity(profile))put(identity(profile),9);put('To, The Competent Authority');put(bid.buyer||'');put(`Technical offer for ${bid.title||bid.bid_number}`,12);y-=6;
- if(!ready){const coverage=verification.boq;put(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. Draft includes ${rows.length} product rows. Check outstanding rows and specifications against the official BOQ.`);}
+ if(!ready){const coverage=verification.boq;put(`BOQ verification: ${coverage.verified_item_count} of ${coverage.expected_item_count??'unknown'} official rows verified. Draft includes ${rows.length} product rows. ${coverageFollowup(coverage,expectedCountEvidence)}`);}
  for(const i of rows){if(y<260)newPage();put(`${i.item_number||''}. ${i.name}`,12);put(`Quantity: ${i.quantity??'Not specified'} ${i.unit||''}${i.pack?' | Pack: '+i.pack:''}${i.pvms||i.niv?' | PVMS/NIV: '+(i.pvms||i.niv):''}`);if(i.consignee)put('Consignee: '+i.consignee);put('Buyer specification: '+(i.specification||'Source specification pending'));for(const note of attachmentNotes(i))put(note);put('Offered OEM product and pack: '+(i.offer||'Offer selection pending'));put('Compliance: '+i.response);
   if(i.photo&&i.photoVerified){const im=await doc[i.photo.type==='png'?'embedPng':'embedJpg'](i.photo.bytes),s=fitImage(i.photo,115,82);if(y<130+s.height)newPage();page.drawImage(im,{x:45,y:y-s.height,width:s.width,height:s.height});y-=s.height+10;}else put('Product photograph review pending');y-=15;
  }

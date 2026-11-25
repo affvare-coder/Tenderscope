@@ -50,3 +50,32 @@ Follow-up accuracy guard: anonymous SCH/Schedule labels are suppressed as produc
 ## Consolidation — 18 November 2026, 22:02 IST
 
 The latest baseline and unified sequence are in [AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md). PR #11 is already merged; earlier pending-merge notes above are historical. Existing Netlify still serves the November 10 deploy. Live checks: 394.35 MB DB, 569 open published bids, 127 with current rows, approximately 10,250 queued document jobs. Existing hourly/four-hour jobs process subsets, not proven full sweeps. Retention protection, expiry proof refresh, source completeness and health deadlocks remain open. Preserve the no-Make/no-paid-council decision and zero recurring LLM goal. New Gemini review is requested; no new joint approval or deployment is claimed.
+
+## 23 November 2026 · Production source verification
+
+PRs #14 and #15 merged into main on 22 November. The previous public site served `7887d65`. At 00:41 IST on 23 November the feed reported 1,174 open bids, 255 closing in 72 hours, 12 published in 24 hours, and zero certified BOQs. Supabase occupied 442,444,947 bytes. The database guard applies at 485,000,000 bytes.
+
+The scheduled source reviewer reads turnover, relaxation, RA and award-method cells with a page and quotation. It checks the CSV denominator independently of the product importer. In the single-category PDF path it also checks the official open listing, deadline, separate public corrigendum response, consignee quantity and technical parameters before proposing a certification. Other document layouts and unreadable source material remain pending. The existing worker budget is 360 starts per IST day. Source checks use existing invocations.
+
+For GEM/2026/B/8048949 the official CSV SHA-256 begins `f7192142db96`. Separate CSV reads each found 16 rows. The linked buyer specification scan was unresolved. The bidder-facing change separates extracted rows from verified specifications and the official denominator. Release acceptance requires three independently checked scheduled certifications and the live rolling 24-hour result.
+
+### 23 November 2026, 07:43 IST
+
+The existing scheduled Edge worker v34 certified GEM/2026/B/8304822 at 01:32 IST on its first review. All nine independent CSV rows match the separate buyer specification PDF and the nine parent quantity/consignee entries. The publication-to-certification interval was 16 h 25 min. The public feed reported 1 verified BOQ, 1,200 open, 264 closing within 72 hours and 13 published within 24 hours. Rolling fresh BOQ readiness was 1/13. Bidder-specific technical offer readiness requires separate OEM and participant evidence. The database held 445,025,427 bytes.
+
+GEM/2026/B/8254458 stayed partial. The worker found three wording conflicts across 21 schedule rows, including film dimensions. On the reported GEM/2026/B/8048949 case, the original CSV count and a visual check of the scanned two-page specification now support all 16 row mappings. Its full attachment review is still pending. This manual repair is excluded from the automatic QA count. Frontend release approval awaits three independent automatic passes.
+
+### 23 November 2026, 08:05 IST
+
+A rotating sample from the open GeM listings yielded 26 relevant bids. Twenty were visible on the site at the audit cutoff. The other six had reached staging. A narrow classification rule missed clinical terms in the title or listing item text. The refresh queue also left eligible recoveries waiting four days. Edge worker v37 recognizes the six clinical descriptions. Recoveries use the regular listing processor after a fresh GeM identity and open-deadline check. The scheduler now reserves an hourly turn for waiting listing rechecks. The first previously stalled job already finished. The clinical recovery job includes eleven staged records; public recovery of the six awaits a fresh feed check.
+
+| Official listing sample | Bid suffixes (prefix GEM/2026/B/) |
+|---|---|
+| Visible at audit cutoff | 8302327, 8285232, 8305364, 8305081, 8305062, 8304382, 8304371, 8301511, 8300800, 8100802, 8287821, 8304231, 8301991, 8291967, 8304288, 8302725, 8300450, 8259618, 8301705, 8257984 |
+| Staged, absent from the public feed | [8304616](https://bidplus.gem.gov.in/showbidDocument/10201263), [8302774](https://bidplus.gem.gov.in/showbidDocument/10199129), [8291566](https://bidplus.gem.gov.in/showbidDocument/10186142), [8283233](https://bidplus.gem.gov.in/showbidDocument/10176650), [8304522](https://bidplus.gem.gov.in/showbidDocument/10201157), [8302603](https://bidplus.gem.gov.in/showbidDocument/10198933) |
+
+All three PR #13 seeds were listed as open by GeM and present in TenderScope. They are historical regression cases. A fresh source recheck of GEM/2026/B/8304765 compared seven PDF rows with the CSV and held row four for a wording difference. GEM/2026/B/8254458 still has three differences among 21 rows. For the automatic nine-row certification on GEM/2026/B/8304822, an independent CSV/PDF read reproduced all quantities, units and item descriptions. The bid detail page showed Complete, 9 of 9, and two distinct attachment types. The editable technical draft reached three rendered pages with nine rows. Each offer and photograph awaits evidence from the sample bidder.
+
+The public release reported clean build 7887d65499525e78e1943b83acbfb91e6ae8f9c4, built 21 November at 23:01 IST. At 08:03 IST the running database used 445,566,099 bytes with 121 of 360 daily starts. Public counts were 1,200 open, 264 closing within 72h, one certified, and 1/13 certified among bids published in the rolling 24h. The live site still gives overly cautious text under the nine-row result. The candidate corrects this and explains the extracted count on incomplete bids. Its source-review paths have deployment digest 9a205b2d2c86ce4201c8ed2db3aa2bdeacca2bde4943daedbcdef118e6bcc129. Routine catalogue checks now receive an additional reserved turn in eight within the same worker budget.
+
+The 01:00 IST daily and the four-hour reconciliation cron both fired. The active 19 November full sweep had scanned 15,329 listing records and reached lane 341; a current full-sweep completion is unconfirmed. Release sign-off still requires two additional independent automated positives and renewed verification of the live public results.
