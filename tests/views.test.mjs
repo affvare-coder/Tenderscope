@@ -42,6 +42,16 @@ test('extensions stay out of new and expired bids stay out of every public view'
  assert.equal(matchesView(t,'new'),false);assert.equal(matchesView(t,'extended'),true);
  for(const view of ['active','new','extended','dental','medical','watch'])assert.equal(matchesView({...t,deadline:'2020-01-01'},view),false);
 });
+test('closed search includes the retained public watch across locations and rejects old or private states',()=>{
+ const deadline = new Date(Date.now() - 86400000).toISOString();
+ const row={...bid,deadline,lifecycle_state:'CLOSED_PENDING_VERIFICATION'};
+ assert.equal(matchesView(row,'watch'),true);
+ assert.equal(matchesView(row,'allopen'),false);
+ assert.equal(matchesView({...row,deadline:'2020-01-01'},'watch'),false);
+ assert.equal(matchesView({...row,status:'expired'},'watch'),false);
+ assert.equal(matchesView({...row,lifecycle_state:'EXCLUDED'},'watch'),false);
+ assert.equal(matchesView({...row,deadline:bid.deadline},'watch'),false);
+});
 
 
 test('96-hour view includes the full four-day publication window and excludes rediscovered old bids',()=>{

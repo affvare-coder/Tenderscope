@@ -31,7 +31,7 @@ const VIEW = {
   research: ['Research opportunities', 'Open healthcare research, AFMRC, ANV and Anveshan opportunities.'],
   delhi: ['Delhi healthcare', 'Delhi and multi-location bids that include Delhi. Location evidence and verification status are shown in each bid.'],
   multi: ['Multi-location healthcare', 'One record per bid across all its recorded locations, including Delhi where applicable.'],
-  watch: ['Closed · verification watch', 'The recorded deadline has passed. A source check is needed before confirming expiry or an extension. These are not shown as open opportunities.']
+  watch: ['Closed bid search', 'Search retained public bids whose recorded deadline passed in the last 14 days. Check GeM for confirmed expiry or an extension.']
 };
 function date(v) {
   if (!v) return null;
@@ -100,6 +100,11 @@ const eventCode = t => String(t.last_event_code || t.last_event_type || '').toUp
 const updated = t => !!eventCode(t) && !['NEW_BID', 'NEW', 'PUBLISHED', 'DISCOVERED', 'INITIAL_IMPORT', 'IMPORTED', 'UNCHANGED', 'CHECKED'].includes(eventCode(t));
 function matchesView(t, view, search = '') {
   if (!eligibleRecord(t)) return false;
+  if (view === 'watch') {
+    const closing = time(t.deadline), now = Date.now();
+    return t.status === 'published' && t.lifecycle_state === 'CLOSED_PENDING_VERIFICATION'
+      && closing !== null && closing <= now && closing > now - 14 * 86400000;
+  }
   if (['landing','allopen','ready'].includes(view)) return active(t) && (view!=='ready' || Number(t.verified_boq_count)>0);
   const exact = String(search).trim().toUpperCase();
   if (view === 'active' && active(t) && /^(?:\d{6,9}|GEM\/\d{4}\/B\/\d+)$/.test(exact)
@@ -120,7 +125,6 @@ function matchesView(t, view, search = '') {
     return active(t) && published!==null && age>=0 && age<=(view==='published24'?24:92)*3600000;
   }
   if (t.location_class === 'DELHI') return false;
-  if (view === 'watch') return false;
   if (!active(t)) return false;
   const text = haystack(t);
   if (view === 'new') return recentlyDiscovered(t);
@@ -186,20 +190,43 @@ async function pages(path, size = 500) {
   return rows;
 }
 const SNAPSHOT_KEY = 'tenderscope.public-page.v3';
+const FILTER_CONTROLS = {
+  priority:'priorityFilter', category:'categoryFilter', urgency:'urgencyFilter', defence:'defenceFilter',
+  time:'timeFilter', ra:'raFilter', turnover_method:'turnoverFilter', evaluation:'evaluationFilter'
+};
+const ELIGIBILITY_KEYS = ['ra','turnover_method','evaluation'];
+function activeFilters() {
+  return Object.fromEntries(Object.entries(FILTER_CONTROLS)
+    .map(([key,id]) => [key,$(id).value])
+    .filter(([key,value]) => value && (key !== 'urgency' || S.view !== 'watch')));
+}
+function verifiedSearch(params) {
+  const filters = JSON.parse(params.get('p_filters') || '{}');
+  return ELIGIBILITY_KEYS.some(key => filters[key]);
+}
 function feedParams() {
-  return new URLSearchParams({p_view:S.view,p_search:$('searchInput').value.trim(),p_sort:S.sort,p_offset:String(S.pageOffset),p_limit:String(S.pageSize),p_filters:JSON.stringify({category:$('categoryFilter').value,priority:$('priorityFilter').value,urgency:$('urgencyFilter').value,defence:$('defenceFilter').value,time:$('timeFilter').value})});
+  const filters = {category:'',priority:'',urgency:'',defence:'',time:'',...activeFilters()};
+  return new URLSearchParams({p_view:S.view,p_search:$('searchInput').value.trim(),p_sort:S.sort,p_offset:String(S.pageOffset),p_limit:String(S.pageSize),p_filters:JSON.stringify(filters)});
 }
 function applyFeed(data, key, savedAt) {
   if (!data || !Array.isArray(data.rows) || !Number.isFinite(data.total) || !data.counts || data.rows.length > S.pageSize) throw new Error('Unexpected bid response');
-  const search = new URLSearchParams(key).get('p_search') || '';
+  const params = new URLSearchParams(key);
+  if (verifiedSearch(params) && data.features?.eligibility_search !== true) throw new Error('Eligibility filters are temporarily unavailable');
+  if (S.view === 'watch' && data.features?.closed_watch !== true) throw new Error('Closed bid search is temporarily unavailable');
+  const search = params.get('p_search') || '';
   S.all = [...new Map(data.rows.filter(t => t && typeof t.id === 'string' && matchesView(t,S.view,search)).map(t => [t.id,t])).values()];
   S.filtered = S.all; S.total = data.total; S.counts = data.counts; S.categories = data.categories || [];
+  document.querySelectorAll('[data-feed-feature]').forEach(element => {
+    element.hidden = data.features?.[element.dataset.feedFeature] !== true;
+  });
   S.products = new Map(); S.buyerReviews = new Map(); S.productsState = 'idle';
   S.pageKey = key; S.loaded = true; S.lastLoadedAt = savedAt;
   categories(); kpis(); render();
 }
 function restoreRegister(key = feedParams().toString()) {
   try {
+    const params = new URLSearchParams(key);
+    if (verifiedSearch(params) || params.get('p_view') === 'watch') return false;
     const saved = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null');
     if (!saved || saved.key !== key || !time(saved.savedAt) || Date.now() - time(saved.savedAt) > 86400000 || time(saved.savedAt) > Date.now()) return false;
     applyFeed(saved.data, key, saved.savedAt);
@@ -213,7 +240,8 @@ function saveRegister(data) {
   catch { /* Browsing remains available when storage is disabled. */ }
 }
 async function load({ quiet = false } = {}) {
-  const key = feedParams().toString(), request = ++S.requestId;
+  const params = feedParams(), key = params.toString(), request = ++S.requestId;
+  const currentOnly = verifiedSearch(params) || S.view === 'watch';
   S.loading = true;
   $('refreshBtn').disabled = true;
   if (S.pageKey !== key) { S.loaded = false; S.all = []; S.filtered = []; restoreRegister(key); }
@@ -228,7 +256,8 @@ async function load({ quiet = false } = {}) {
       return load({quiet});
     }
     applyFeed(data, key, new Date().toISOString());
-    S.docs.clear(); S.itemRows.clear(); saveRegister(data);
+    S.docs.clear(); S.itemRows.clear();
+    if (!currentOnly) saveRegister(data);
     $('errorState').hidden = true;
     loadProductSummaries();
     loadBuyerReviews();
@@ -236,6 +265,7 @@ async function load({ quiet = false } = {}) {
     else openFromLocation();
   } catch (error) {
     if (request !== S.requestId) return;
+    if (currentOnly) { S.loaded = false; S.all = []; S.filtered = []; }
     $('errorState').hidden = false;
     $('errorState').textContent = `${S.loaded ? `Refresh failed. Showing saved bids from ${stamp(S.lastLoadedAt)}; freshness is not confirmed.` : 'Bid data is temporarily unavailable. This does not mean there are no bids.'} ${error.message}. Please retry.`;
     if (!S.loaded) { kpis(); render(); }
@@ -266,10 +296,11 @@ function kpis() {
 let filterTimer;
 function filter() {
   const q = $('searchInput').value.trim();
-  const count = ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].filter(id => $(id).value).length;
+  const filters = activeFilters(), count = Object.keys(filters).length;
+  const evidence = ELIGIBILITY_KEYS.some(key => filters[key]) ? ' · Current buyer evidence' : '';
   $('filterCount').hidden = !count; $('filterCount').textContent = count;
   $('filterSummary').hidden = !count && !q;
-  $('filterSummary').innerHTML = `${count ? `${count} filter${count === 1 ? '' : 's'} applied` : ''}${count && q ? ' · ' : ''}${q ? `Search: “${esc(q)}”` : ''}<button type="button" data-action="clear-filters">Clear all</button>`;
+  $('filterSummary').innerHTML = `${count ? `${count} filter${count === 1 ? '' : 's'} applied${evidence}` : ''}${count && q ? ' · ' : ''}${q ? `Search: “${esc(q)}”` : ''}<button type="button" data-action="clear-filters">Clear all</button>`;
   S.pageOffset = 0;
   // Invalidate an earlier query immediately, before the debounce completes.
   S.requestId++;
@@ -450,9 +481,9 @@ function render() {
     $('tenderList').innerHTML = ''; $('loadMoreBtn').hidden = true; $('previousPageBtn').hidden = true; $('pageSummary').textContent = '';
     return;
   }
-  const sortLabel = { deadline: 'closing date first', newest: 'newest published first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
+  const sortLabel = { deadline: S.view === 'watch' ? 'most recently closed first' : 'closing date first', newest: 'newest published first', updated: 'latest change first', value: 'highest recorded value first' }[S.sort];
   $('resultCount').textContent = `${S.total.toLocaleString('en-IN')} ${S.view === 'watch' ? 'bids awaiting verification' : (S.total === 1 ? 'opportunity' : 'opportunities')} · ${sortLabel}`;
-  $('tenderList').innerHTML = S.filtered.map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || ['priorityFilter','categoryFilter','urgencyFilter','defenceFilter','timeFilter'].some(id => $(id).value) ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
+  $('tenderList').innerHTML = S.filtered.map(card).join('') || `<div class="empty-card"><div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7.3"/><path d="m16 16 5 5"/></svg></div><h3>No opportunities in this view</h3><p>${$('searchInput').value || Object.keys(activeFilters()).length ? 'Try a wider search or clear your filters to see more healthcare bids.' : 'There are no matching records at the moment. Explore all opportunities or check back after the next source update.'}</p><button type="button" class="btn" data-action="clear-filters">Reset filters</button> <button type="button" class="btn primary" data-action="all-bids">See all opportunities</button></div>`;
   $('loadMoreBtn').hidden = S.pageOffset + S.all.length >= S.total;
   $('previousPageBtn').hidden = S.pageOffset === 0;
   $('loadMoreBtn').disabled = S.loading; $('previousPageBtn').disabled = S.loading;
@@ -666,11 +697,13 @@ function selectView(view) {
   S.view = VIEW[view] ? view : 'active';
   S.sort = ['updated','extended'].includes(S.view) ? 'updated' : ['representation','allopen','active','published24','published92','new','recent96'].includes(S.view) ? 'newest' : 'deadline';
   $('sortOrder').value = S.sort;
+  $('urgencyFilter').disabled = S.view === 'watch';
+  $('searchInput').placeholder = S.view === 'watch' ? 'Search closed bids by bid number, product or buyer…' : 'Search bid number, product, buyer or PVMS…';
   kpis(); filter(); closeSidebar();
 }
 function resetFilters() {
   $('searchInput').value = '';
-  ['priorityFilter', 'categoryFilter', 'urgencyFilter', 'defenceFilter', 'timeFilter'].forEach(id => $(id).value = '');
+  Object.values(FILTER_CONTROLS).forEach(id => $(id).value = '');
   filter();
 }
 function closeSidebar() {
@@ -678,7 +711,7 @@ function closeSidebar() {
   $('menuToggle').setAttribute('aria-expanded','false');
 }
 $('searchInput').addEventListener('input', () => filter());
-['priorityFilter', 'categoryFilter', 'urgencyFilter', 'defenceFilter', 'timeFilter'].forEach(id => $(id).addEventListener('change', () => filter()));
+Object.values(FILTER_CONTROLS).forEach(id => $(id).addEventListener('change', () => filter()));
 $('clearFilters').onclick = resetFilters;
 $('sortOrder').onchange = () => { S.sort = $('sortOrder').value; filter(); };
 $('filtersToggle').onclick = () => { const open = $('filterPanel').hidden; $('filterPanel').hidden = !open; $('filtersToggle').setAttribute('aria-expanded',String(open)); };
