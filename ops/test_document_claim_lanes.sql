@@ -85,8 +85,10 @@ union all
 select id,'specification','Buyer specification','https://mkp.gem.gov.in/'||bid_number||'.pdf',
   'specification','available',repeat('b',64) from pg_temp.tenders where bid_number='paired';
 
-insert into pg_temp.sync_jobs(run_id,mode,dedupe_key,available_at,payload)
+-- Give the normal fallback a distinct queue age from the paired-job fixtures.
+insert into pg_temp.sync_jobs(run_id,mode,dedupe_key,created_at,available_at,payload)
 select r.id,r.mode,t.bid_number||'-'||d.kind,
+  case when t.bid_number='newest' then now()-interval '1 minute' else now() end,
   case when t.bid_number='backoff' and d.kind='boq' then now()+interval '2 hours' else now() end,
   jsonb_build_object('kind','document','url',d.official_url,
     'lane',case when d.kind='bid' then 'ordinary-parent' else 'official-pdf-attachment' end,
