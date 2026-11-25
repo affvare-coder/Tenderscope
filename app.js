@@ -354,7 +354,7 @@ function productsPanel(items,documents=[],bid=null) {
 const reviewLabels = {
   item:'Buyer item and quantity', consignee:'Consignee', bidder:'Bidder turnover', oem:'OEM turnover',
   turnover_method:'Turnover verification', mse:'MSE relaxation', startup:'Startup relaxation',
-  ra:'Reverse auction', evaluation:'Award method', emd:'EMD', exemption:'Trader / OEM EMD exemption',
+  ra:'Reverse auction', h1:'RA qualification rule', evaluation:'Award method', emd:'EMD', exemption:'Trader / OEM EMD exemption',
   precedence:'Specification precedence', undertaking:'Stamp paper / undertaking', beneficiary:'EMD / ePBG beneficiary',
   epbg:'ePBG', mii:'Make in India preference'
 };
@@ -418,7 +418,7 @@ function bidderChecks(review, compact=false) {
     return `<div><dt>${esc(reviewLabels[key])}</dt><dd>${href?`${esc(f.value)} <a href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(f.quote)}">${esc(f.section)} · p. ${f.page} ↗</a>`:'Unverified'}</dd></div>`;
   }).join('');
   const flags=['exemption','precedence','undertaking'];
-  return `<p class="section-note">Buyer PDF reviewed ${esc(stamp(review.reviewed_at))}. Linked ATCs and subsequent corrigenda require a separate check.</p><dl class="bidder-facts">${rows(['item','consignee',...summaryKeys,'mse','startup'])}</dl><h4>Vendor disqualification &amp; ATC watchlist</h4><dl class="bidder-facts">${rows(flags)}${rows(['beneficiary','epbg','mii'])}</dl><details><summary>Exact buyer wording</summary>${flags.filter(k=>facts[k]?.quote&&buyerPage(review,facts[k].page)).map(k=>`<p><strong>${esc(facts[k].section)}</strong> · “${esc(facts[k].quote)}”</p>`).join('')}</details>`;
+  return `<p class="section-note">Buyer PDF reviewed ${esc(stamp(review.reviewed_at))}. Linked ATCs and subsequent corrigenda require a separate check.</p><dl class="bidder-facts">${rows(['item','consignee',...summaryKeys,'h1','mse','startup'])}</dl><h4>Vendor disqualification &amp; ATC watchlist</h4><dl class="bidder-facts">${rows(flags)}${rows(['beneficiary','epbg','mii'])}</dl><details><summary>Exact buyer wording</summary>${flags.filter(k=>facts[k]?.quote&&buyerPage(review,facts[k].page)).map(k=>`<p><strong>${esc(facts[k].section)}</strong> · “${esc(facts[k].quote)}”</p>`).join('')}</details>`;
 }
 async function loadBuyerReviews() {
   const request=S.requestId, ids=S.all.map(t=>t.id).filter(id=>/^[a-f0-9-]{36}$/i.test(id));
@@ -575,10 +575,15 @@ async function currentPackSource(id,summary=false) {
   if(!data?.version || (!summary && (!data.bid || !Array.isArray(data.items) || !Array.isArray(data.documents))))throw Error('Current buyer documents could not be verified. Refresh the bid and try again.');
   if(!summary){
     const certified=new Map((data.certified_rows||[]).map(row=>[row.key,row]));
+    if(data.expected && (certified.size!==data.expected.count || data.items.some(item=>!certified.has(item.item_key)))){
+      data.expected={...data.expected,full_review_pending:true};
+    }
     data.items=data.items.map(item=>{
       const row=certified.get(item.item_key);
-      const pdf=row?.spec_url && Number.isInteger(row.spec_page) ? {spec_url:row.spec_url,spec_page:row.spec_page}: {};
-      return {...item,...pdf,specification_verified:!item.pdf_extracted && !item.source_question && (!!row || item.reviewed_specification===true),specs_verified:false};
+      const spec=row?.spec_url ? {...item,spec_url:row.spec_url,spec_sha:row.spec_sha,spec_page:row.spec_page} : item;
+      const linkedSpecCurrent=!(spec.spec_url || spec.spec_sha) || (!!spec.spec_sha && Number.isInteger(spec.spec_page) && spec.spec_page>0 &&
+        data.documents.some(d=>d.official_url===spec.spec_url && d.availability==='available' && d.content_hash===spec.spec_sha));
+      return {...spec,specification_verified:linkedSpecCurrent && !spec.pdf_extracted && !spec.source_question && (!!row || spec.reviewed_specification===true),specs_verified:false};
     });
   }
   return data;

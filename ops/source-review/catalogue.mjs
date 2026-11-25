@@ -3,7 +3,7 @@
 const text=t=>t.str.trim();
 const normalized=s=>s.normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
 const heading=/^(.+?)\s*\(\s*(\d[\d,]*(?:\.\d+)?)\s+(pieces?|units?|sets?|kits?|pairs?|packs?|bottles?|numbers?)\s*\)\s*$/i;
-const generic=/^(?:sch(?:edule)?|boq|item|title)\s*[-_. ]*\d+$/i;
+const generic=/^(?:s\s*c\s*h(?:ed(?:ule)?)?|boq|item|title)[\s._:#–—-]*(?:\d+|[ivxlcdm]+)[.:]?$/i;
 const pointer=/\b(?:see|refer(?:red)? to|as per|per)\s+(?:the\s+)?(?:attached|annexure|attachment|enclosed|uploaded)|\b(?:view file|view specification|buyer uploaded ATC document|technical specifications? attached|specifications? as attached)\b/i;
 const financialConflict=/\b(?:bidder|OEM)\s+turn\s*over\s*:/i;
 const footer=s=>/^\d+\s*\/\s*\d+$/.test(s);
@@ -24,7 +24,7 @@ export function catalogueProof(pages,fields,links){
  if(headings.length!==1||consignee.length!==1||technical.length!==1||disclaimer.length!==1)return null;
  const start=headings[0], stop=consignee[0], end=disclaimer[0], [,name,num,unit]=start.s.match(heading);
  const quantity=Number(num.replaceAll(',',''));
- if(normalized(name)!==normalized(category)||generic.test(name)||!quantity||quantity!==Number(fields.total.quote.replaceAll(',','')))return null;
+ if(normalized(name)!==normalized(category)||generic.test(normalized(name))||!quantity||quantity!==Number(fields.total.quote.replaceAll(',','')))return null;
  if(!inRegion({transform:[0,0,0,0,0,technical[0].y]},technical[0].page,start,stop))return null;
  // Require each recognized GeM matrix and read its rows in PDF cell order.
  // Header and value runs sometimes occur in different paint order across pages.
@@ -75,6 +75,8 @@ export function catalogueProof(pages,fields,links){
  const serial=delivery.filter(t=>t.transform[4]<70&&t.transform[5]<qtyHead.transform[5]-14&&/^\d+$/.test(text(t)));
  if(serial.length!==1||text(serial[0])!=='1')return null;
  const row=delivery.filter(t=>Math.abs(t.transform[5]-serial[0].transform[5])<3);
+ const address=row.filter(t=>t.transform[4]>=addrHead.transform[4]-15 && t.transform[4]<qtyHead.transform[4]-35).map(text).join(' ').trim();
+ if(!/[\p{L}\p{N}]/u.test(address) || /^(?:n\/?a|nil|unknown|not specified)$/i.test(address))return null;
  const qty=row.filter(t=>Math.abs(t.transform[4]-qtyHead.transform[4])<35&&/^[\d,]+(?:\.\d+)?$/.test(text(t)));
  if(qty.length!==1||Number(text(qty[0]).replaceAll(',',''))!==quantity)return null;
  const terms=all.filter(t=>inRegion({transform:[0,0,0,0,0,t.y]},t.page,{page:stop.page,y:serial[0].transform[5]},end) && !footer(t.s));

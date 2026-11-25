@@ -1,0 +1,98 @@
+--- a/supabase/functions/tenderscope-sync/index.ts
++++ b/supabase/functions/tenderscope-sync/index.ts
+@@ -5,13 +5,16 @@
+ import * as pdfjs from 'npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs';
+ import * as pdfjsWorker from 'npm:pdfjs-dist@4.10.38/legacy/build/pdf.worker.mjs';
+
+-import {scheduledSourceReview} from '../../../worker/review-worker.mjs';
++import {loadSourceReview,scheduledSourceReview} from '../../../worker/review-worker.mjs';
++import {isStagingReviewProject,runStagingSourceReviewBatch} from '../../../worker/batch-worker.mjs';
+
+ Deno.serve(async(request:Request)=>{
+  if(request.method!=='POST')return new Response('Method not allowed',{status:405});
+  const authorization=request.headers.get('authorization')||'';
+  if(!/^Bearer [A-Za-z0-9_-]{40,}$/.test(authorization))return new Response('Unauthorized',{status:401});
+- const db=restClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
++ const supabaseUrl=Deno.env.get('SUPABASE_URL')!;
++ const serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
++ const db=restClient(supabaseUrl,serviceKey);
+  try{
+   const digest=await sha256(new TextEncoder().encode(authorization.slice(7)));
+   if(!(await db.rpc('verify_sync_token',{p_token_hash:digest})))return new Response('Unauthorized',{status:401});
+@@ -21,7 +24,25 @@
+   const review=await scheduledSourceReview(db,pdfjs,pdfjsWorker);
+   const result=review??await runQueueSlice({run:budgetMs=>runWorker({db,rules:current||RULES,pdfjs,workerModule:pdfjsWorker,budgetMs})});
+   if(!review && (['idle','expiry_checked','document_retired','bounded_cadence_completed','publication_checkpointed'].includes(result.status)||['queue_slice_completed','document_processed'].includes(result.status)&&result.cpu_heavy===false) && Date.now()-started<9000){
+-   try{const spare=await scheduledSourceReview(db,pdfjs,pdfjsWorker,true);if(spare)result.source_review=spare;}catch{/* The primary queue job already completed. The review lease is retryable. */}
++   const stage=Deno.env.get('TENDERSCOPE_BATCH_STAGING_PROJECT');
++   const stagingBatch=isStagingReviewProject(supabaseUrl,stage);
++   try{
++    if(stagingBatch){
++     const stageDb=restClient(supabaseUrl,serviceKey,(url:string,options:RequestInit)=>fetch(url,{
++      ...options,signal:AbortSignal.any([options.signal!,AbortSignal.timeout(3000)]),
++     }));
++     result.source_review=await runStagingSourceReviewBatch({
++      db:stageDb,deadlineMs:started+25000,signal:request.signal,
++      reviewJob:(job:Parameters<typeof loadSourceReview>[0],transport:Parameters<typeof loadSourceReview>[3])=>
++       loadSourceReview(job,pdfjs,pdfjsWorker,transport),
++     });
++    }else{
++     const spare=await scheduledSourceReview(db,pdfjs,pdfjsWorker,true);
++     if(spare)result.source_review=spare;
++    }
++   }catch{
++    if(stagingBatch)result.source_review={reason:'staging_batch_failed'};
++   }
+   }
+   return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+  }catch(error){return Response.json({status:'failed',error:String(error.message).slice(0,500)},{status:500});}
+--- a/worker/documents.mjs
++++ b/worker/documents.mjs
+@@ -1,4 +1,4 @@
+-import {readBidFields} from './eligibility.mjs';
++import {readParentBidFields} from './eligibility.mjs';
+ import {specificationTable} from './specification-table.mjs';
+ import {officialAttachmentKind,annotationLabel} from './attachment-roles.mjs';
+ import {readPage,pdfLines} from './representation.mjs';
+@@ -138,7 +138,7 @@
+   const task=pdfjs.getDocument({data:bytes,isEvalSupported:false,useSystemFonts:false,disableFontFace:true,useWorkerFetch:false});
+   const pdf=await task.promise;
+   try {
+-    const headerFacts={},conflictingFacts=new Set();
++    const headerPages=[];
+     const reviewPages=[],texts=[],annotations=[],locations=[],productItems=[];let productReview=false;
+     if(!Number.isSafeInteger(pdf.numPages)||pdf.numPages<1)throw new Error('pdf_page_count_invalid');
+     const start=Math.max(1,Math.min(pdf.numPages,startAnnotationPage));
+@@ -148,11 +148,7 @@
+       const page=await pdf.getPage(n);let tokens=[];
+       if(n<=maxTextPages || (n>=start&&n<=end)) {
+         const content=await page.getTextContent();tokens=content.items;
+-        if(n<=maxTextPages && n<=5)for(const [key,fact] of Object.entries(readBidFields(tokens,n))){
+-          if(key==='category'||key==='total')continue;
+-          if(headerFacts[key] && headerFacts[key].value!==fact.value)conflictingFacts.add(key);
+-          else headerFacts[key]=fact;
+-        }
++        if(n<=maxTextPages && n<=5)headerPages.push({page:n,tokens});
+         if(reviewUrl&&n>=start&&n<=end){
+           const role=documentKind(reviewUrl);
+           const evidence=readPage(n,pdfLines(content.items),role!=='bid');
+@@ -177,7 +173,7 @@
+       }
+       page.cleanup();
+     }
+-    for(const key of conflictingFacts)delete headerFacts[key];
++    const {category,total,...headerFacts}=readParentBidFields(headerPages);
+     return {header_facts:headerFacts,review_pages:reviewPages,...parseDocumentText(texts.join('\n'),annotations),product_items:productItems,product_table_needs_review:productReview,consignee_locations:mergeConsigneeLocations(locations),page_count:pdf.numPages,text_pages_parsed:Math.min(pdf.numPages,maxTextPages),annotation_start_page:start,annotation_end_page:end,annotation_next_page:end<pdf.numPages?end+1:null,annotation_scan_complete:end===pdf.numPages,document_parse_scope:'metadata_and_resumable_links_and_consignee_addresses'};
+   } finally {await pdf.destroy();}
+ }
+--- a/worker/gem.mjs
++++ b/worker/gem.mjs
+@@ -125,7 +125,7 @@
+   return uniq(Object.values(rules.healthcare?.groups ?? {}).flat().map(clean).filter(Boolean));
+ }
+
+-const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
++const specificHealthcare = /\b(?:automated\s+elisa\s+processor|dental\s+(?:(?:air\s+)?compressors?|materials?|instruments?|equipment|chairs?|consumables?|expendables?|laboratory|burs?|mirrors?|stone|implant|unit)|photographic\s+equipments?\s+for\s+digital\s+dental\s+records?|medical\s+(?:equipment|consumables?|stores?|devices?|oxygen|supplies)|surgical\s+(?:instruments?|consumables?|masks?|gowns?|gloves?|blades?|items)|medicines?|pharmaceutical|orthodontic|endodontic|prosthodontic|maxillofacial|ha?ematology|dialysis|nephrology|epidural|anaesthesia|anesthesia|diagnostic\s+(?:kits?|equipment)|root\s+canal|glass\s+ionomer|temporary\s+filling|hospital\s+(?:beds?|furniture)|patient\s+monitor|blood\s+(?:bank|transfusion))\b/i;
+ // Exact clinical categories found in the independent buyer-register sample.
+ const clinicalEquipment = /\b(?:(?:Ig[MG]\s+)?ELISA\s+kits?|(?:preformed\s+)?molar\s+bands?|dental\s+sandblasters?|endo[ -]?bronchial\s+ultrasound|blood\s+and\s+fluid\s+warmers?|non[ -]*invasive\s+blood\s+pressure|human milk (?:analy[sz]er|pasteuri[sz]er)|emergency recovery trolley|patient[- ]controlled analgesia pump)\b/i;
+ const pcaPumpCategory = /^PCA pump(?:\s*\((?:V\d+|Q[1-4])\))*$/i;
