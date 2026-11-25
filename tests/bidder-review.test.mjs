@@ -20,6 +20,13 @@ test('reviewed and unresolved fields keep their evidence and scope on card and d
   assert.doesNotMatch(ctx.show({...review,facts:null}),/₹1,50,000/);
   assert.doesNotMatch(ctx.show({...review,source_url:'https://buyer.edu.in.invalid.example/b.pdf'}),/href=/);
 });
+test('RA qualification rule links to the source page in bid details',()=>{
+  const h1={value:'H1 - Highest Priced Bid Elimination',quote:'H1 - Highest Priced Bid Elimination',page:3,section:'RA Qualification Rule'};
+  const sourced={...review,facts:{...review.facts,h1}};
+  assert.match(ctx.show(sourced),/H1 - Highest Priced Bid Elimination .*bid\.pdf#page=3/);
+  assert.doesNotMatch(ctx.show(sourced,true),/H1 - Highest Priced/);
+  assert.doesNotMatch(ctx.show({...sourced,facts:{h1:{...h1,quote:''}}}),/H1 - Highest Priced/);
+});
 test('guests can open official sources and member downloads remain distinct',()=>{
   const doc={kind:'bid',official_url:'https://bidplus.gem.gov.in/showbidDocument/10001'};
   assert.match(ctx.docs([doc]),/Open official bid PDF/);

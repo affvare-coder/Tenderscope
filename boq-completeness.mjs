@@ -55,6 +55,9 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
   if(!officialUrl(item.source_url)||!clean(item.source_hash)||!available.has(fingerprint(item.source_url,item.source_hash))){
    sourceMismatch++;incomplete++;continue;
   }
+  if((item.spec_url || item.spec_sha) && !available.has(fingerprint(item.spec_url,item.spec_sha))){
+   sourceMismatch++;incomplete++;continue;
+  }
   if(!validQty(item.quantity)||unknown(item.unit)||unknown(item.specification)||referenceOnly(item.specification)){incomplete++;continue;}
   // SHA-proven document association is not a full-text/specification proof.
   // No legacy row gets counted in K without an independent parameter check.
@@ -64,7 +67,9 @@ export function assessBoqCompleteness({items=[],documents=[],expectedCountEviden
   verified.push(item);
  }
  const count=verified.length;
- const pendingReview=expectedCountEvidence?.full_review_pending===true;
+ const missingDocument=documents.some(d=>d?.availability!=='removed' &&
+  (d?.availability!=='available' || !clean(d.content_hash) || !officialUrl(d.official_url)));
+ const pendingReview=expectedCountEvidence?.full_review_pending===true || missingDocument;
  const complete=expected!==null&&count===expected&&incomplete===0&&specsUnconfirmed===0&&!pendingReview;
  if(pendingReview && count===expected)issues.push('The full attachment set still needs final reconciliation');
  const extracted=items.filter(item=>item && item.is_current!==false && !unknown(item.name) && !isAnonymousScheduleLabel(item.name) && available.has(fingerprint(item.source_url,item.source_hash))).length;
