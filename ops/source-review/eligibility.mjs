@@ -16,6 +16,27 @@ const fields=[
  ['total',/Total Quantity/i,/^\d[\d,]*(?:\.\d+)?$/]
 ];
 const norm=s=>s.normalize('NFKC').replace(/\s+/g,' ').trim();
+
+function readDepositRequirements(tokens, page) {
+ const facts={};
+ const text=tokens.filter(t=>t.str?.trim() && Number.isFinite(t.transform?.[4]) && t.transform[5]>30);
+ for(const title of text){
+  const section=title.str.trim().match(/(?:^|\/)\s*(EMD|ePBG) Detail$/i)?.[1];
+  if(!section)continue;
+  const y=title.transform[5];
+  const below=text.filter(t=>t.transform[5]<y-3&&t.transform[5]>=y-36);
+  const rowY=Math.max(...below.map(t=>t.transform[5]));
+  const row=below.filter(t=>rowY-t.transform[5]<=3).sort((a,b)=>a.transform[4]-b.transform[4]);
+  const quote=row.map(t=>t.str.trim()).join(' ').match(/(?:^|\/)\s*Required\s+(Yes|No)$/i)?.[1];
+  if(!quote)continue;
+  const key=section.toLowerCase();
+  const fieldSection=key==='emd'?'EMD Detail / Required':'ePBG Detail / Required';
+  if(!Object.hasOwn(facts,key))facts[key]={value:quote,quote,page,section:fieldSection};
+  else if(facts[key]?.quote.toLowerCase()!==quote.toLowerCase())facts[key]=null;
+ }
+ return facts;
+}
+
 function readBidFieldCandidates(tokens,page){
  const clean=tokens.filter(t=>t.str?.trim() && Number.isFinite(t.transform?.[4])&&t.transform[5]>30);
  const anchor=clean.findIndex(t=>/\/\s*(?:Bid End Date\/Time|Evaluation Method|Bid to RA enabled|RA Qualification Rule|Total Quantity|EMD Amount)\s*$/i.test(t.str));
@@ -65,11 +86,22 @@ function readBidFieldCandidates(tokens,page){
 // Check the controlling RA flag and qualification cell together even when
 // the bid header spans pages. Ambiguous cells resolve to no published fact.
 export function readParentBidFields(pages){
- const found={};
+ const found={}, deposits={};
+ function merge(target, candidates){
+  for(const [key,candidate] of Object.entries(candidates)){
+   if(Object.hasOwn(target,key) && target[key]?.quote!==candidate?.quote)target[key]=null;
+   else if(!Object.hasOwn(target,key))target[key]=candidate;
+  }
+ }
  for(const {page,tokens} of pages){
-  for(const [key,candidate] of Object.entries(readBidFieldCandidates(tokens,page))){
-   if(Object.hasOwn(found,key) && found[key]?.quote!==candidate?.quote)found[key]=null;
-   else if(!Object.hasOwn(found,key))found[key]=candidate;
+  merge(found, readBidFieldCandidates(tokens,page));
+  merge(deposits, readDepositRequirements(tokens,page));
+ }
+ for(const [key, requirement] of Object.entries(deposits)){
+  if(!requirement || (requirement.quote.toLowerCase()==='no' && found[key] && /[1-9]/.test(found[key].quote))){
+   delete found[key];
+  }else if(!Object.hasOwn(found,key) || requirement.quote.toLowerCase()==='no' && found[key]){
+   found[key]=requirement;
   }
  }
  for(const key of Object.keys(found))if(!found[key])delete found[key];

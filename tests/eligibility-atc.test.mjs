@@ -90,3 +90,19 @@ test('H1 supports split GeM header pages and withholds the rule when either cell
   assert.equal(readParentBidFields([yes,priced,{page:3,tokens:[token('/Bid to RA enabled',130)]}]).h1,undefined);
   assert.equal(readParentBidFields([yes,{page:2,tokens:[token('Example /RA Qualification Rule',130),priced.tokens[1]]}]).h1,undefined);
 });
+
+test('an explicit Required No is evidence even when the EMD and ePBG amounts are omitted', () => {
+  // Parent PDF for GEM/2026/B/8304822, p. 4, has both labelled cells.
+  const deposits = {page:4,tokens:[
+    token('ईएमडी विवरण /EMD Detail',130,670), token('आवश्यकता /Required',130,650), token('No',276,650),
+    token('ईपीबीजी विवरण /ePBG Detail',130,610), token('आवश्यकता /Required No',130,590),
+  ]};
+  const facts=readParentBidFields([deposits]);
+  assert.deepEqual(facts.emd,{value:'No',quote:'No',page:4,section:'EMD Detail / Required'});
+  assert.deepEqual(facts.epbg,{value:'No',quote:'No',page:4,section:'ePBG Detail / Required'});
+  const conflicts={page:5,tokens:[token('/EMD Amount',130,680),token('₹50,000',276,680)]};
+  assert.equal(readParentBidFields([deposits,conflicts]).emd,undefined);
+  assert.equal(readParentBidFields([deposits,page(5,'/EMD Detail','/Required Yes')]).emd,undefined);
+  assert.equal(readParentBidFields([page(1,'/EMD Detail','See the attached ATC','/Required No')]).emd,undefined);
+  assert.equal(readParentBidFields([page(1,'/Required No')]).emd,undefined);
+});
