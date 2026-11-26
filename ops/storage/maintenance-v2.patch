@@ -1,0 +1,21 @@
+--- a/supabase/functions/tenderscope-maintenance/index.ts
++++ b/supabase/functions/tenderscope-maintenance/index.ts
+@@ -1,6 +1,7 @@
+ import {createClient} from 'npm:@supabase/supabase-js@2.116.0';
+ import {restClient} from '../../../worker/sync.mjs';
+ import {archiveBatch} from '../../../worker/retention.mjs';
++import {removeDetachedArchives} from '../../../worker/remove-detached-archives.mjs';
+ import {sha256} from '../../../worker/documents.mjs';
+ Deno.serve(async(request:Request)=>{
+  if(request.method!=='POST')return new Response('Method not allowed',{status:405});
+@@ -12,6 +13,10 @@
+   if(!(await db.rpc('verify_sync_token',{p_token_hash:await sha256(new TextEncoder().encode(authorization.slice(7)))})))return new Response('Unauthorized',{status:401});
+   const client=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+   const input=await request.json().catch(()=>({}));
++  if(input.scope==='detached-archives'){
++   const result=await removeDetachedArchives({db,storage:client.storage,limit:16});
++   return Response.json(result,{headers:{'Cache-Control':'no-store'}});
++  }
+   const scopes=input.scope?[input.scope]:['bid','candidates','jobs'];
+   const results=[],started=Date.now();
+   for(let round=0;round<2&&Date.now()-started<30000;round++){
