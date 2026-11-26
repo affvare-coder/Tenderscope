@@ -1,4 +1,4 @@
--- Run after the expiry-evidence migration on a disposable database.
+-- Run after the expiry-evidence and bounded-renewal migrations on a disposable database.
 begin;
 create temp table tenders (
   id uuid primary key,
@@ -81,13 +81,18 @@ begin
   into actual
   from jsonb_array_elements(pg_temp.expiry_checks_due(20)) with ordinality as j(x, ord);
   if actual is distinct from array[
-    'just-closed:1', 'pending-second:2', 'stale-proof:2', 'stale-failure:2', 'expired-job-round:1'
+    'just-closed:1', 'stale-failure:2', 'pending-second:2', 'stale-proof:2', 'expired-job-round:1'
   ] then
     raise exception 'Expected stale day 2 evidence while preserving priority and cooldown, got %', actual;
   end if;
 
   if jsonb_array_length(pg_temp.expiry_checks_due(1)) <> 1 then
     raise exception 'Requested limit must bound official source checks';
+  end if;
+  if (pg_temp.expiry_checks_due(2)->0->>'bid_number') <> 'just-closed'
+    or (pg_temp.expiry_checks_due(2)->1->>'bid_number') <> 'stale-failure'
+  then
+    raise exception 'Renewal must share early turns with ordinary recent checks';
   end if;
 
   select * into strict stale from pg_temp.tenders where bid_number = 'stale-proof';
