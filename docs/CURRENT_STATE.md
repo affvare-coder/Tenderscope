@@ -1,3 +1,22 @@
+# Current state — 26 November 2026, 21:50 IST
+
+## Verified capacity work
+
+- Production A measured **465,955,987 database bytes**, with **19,044,013 bytes** before the 485,000,000-byte ingestion guard. Dropping two unused non-constraint indexes took the measured size from 468,290,707 to 465,824,915 bytes at release.
+- Scheduled retirement removed seven confirmed old bids from A after the expiry repair. The latest snapshot counted 1,184 published open bids, six saved bids and one fully certified BOQ. A public feed smoke test returned HTTP 200. The remaining old unsaved cohort had 388 bids pending the applicable evidence checks.
+- The authenticated maintenance worker removed **142 detached candidate files**, totaling **1,595,521 file bytes**. Every absence was confirmed from Storage metadata. The next batch was idle and a separate query found zero of those files still present. Hash receipts remain available for audit. Nightly detached-file cleanup runs at 00:47 IST. The expiry worker reserves one stale-proof renewal after the first ordinary check in each multi-check slice.
+- Mumbai Project B `noeobaiuzhywneddekpn` is healthy on Free and measured **11,458,227 database bytes**. It fetched the official CSVs for GEM/2026/B/8308373, 8313971 and 8315522. All 61 extracted rows, source hashes and document revisions matched A. B holds zero customer accounts. Anonymous and authenticated member roles failed the engine-access check.
+- B's BOQ runner version 1 digest is `7dc1a26865c29c81081b9572a8e5953bdc788dfc3c021e4ac83b790c6f51b6db`. B migrations are `20261126160518` and `20261126160520`. Source comparison was a shadow acceptance run. Canonical publication continues in A.
+
+## Release and next work
+
+- Capacity code merged through `37fcf98b5caca6cfb0a3a5ddbc190e8ad4f1aebe`. CI passed for [expiry and repeat writes](https://github.com/affvare-coder/Tenderscope/pull/24), [capacity and archive cleanup](https://github.com/affvare-coder/Tenderscope/pull/25), [B intake and runner](https://github.com/affvare-coder/Tenderscope/pull/26) and [cleanup throughput](https://github.com/affvare-coder/Tenderscope/pull/27).
+- A applied `20261126134443`, `20261126134446`, `20261126160321`, `20261126160347`, `20261126160501`, `20261126161450` and `20261126161451`. Maintenance v3 digest is `88a7d58b62261a661b3ee75a3f2fceb9fa3d58945d08c1b7141657ae52a29b28`. Netlify serves `600232ffd37617969d045f81d73edfccce83fe33` and the canonical sync worker is v37.
+- **Pending** — implement A's fenced work dispatch and transactional result acceptance before transferring production workload to B. Retain the existing whole-bid certification and hosted throughput gates in PR #22. Compare sustained A database allocation after the scheduled expiry and vacuum cycles.
+- **Blocked** — paused Historical Archive `xwxexchtbviiyxcmuvnn` still needs inspection and a verified independent export. The connector could not read its database and dashboard sign-in timed out. Archive copies in A with active dependencies require those dependencies to be resolved before deletion.
+
+---
+
 # Current state — 18 November 2026, 22:02 IST
 
 Phase 1 remains incomplete. Canonical consolidation and exact next gates: [autonomous execution plan](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md).
