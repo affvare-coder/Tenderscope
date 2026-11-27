@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 const source=fs.readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+const page=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const appPath=/src="(\/app\.js\?v=\d+)"/.exec(page)?.[1];
 function harness({offline=false}={}){
  const handlers={},writes=[],deleted=[];let fetches=0;
  const caches={open:async()=>({addAll:async()=>{},put:async(key)=>writes.push(key)}),match:async()=>new Response('old shell'),keys:async()=>['tenderscope-app-v1','tenderscope-app-v2','unrelated-cache'],delete:async key=>deleted.push(key)};
@@ -17,9 +19,11 @@ test('service worker leaves live feeds, member responses and unknown URLs to the
  }assert.equal(h.writes.length,0);
 });
 test('static app assets use current network bytes and fall back only when offline',async()=>{
- const h=harness(),e=h.event(new Request('https://tenderscope-healthcare.netlify.app/app.js'));h.handlers.fetch(e);
+ assert.ok(appPath);
+ const appUrl='https://tenderscope-healthcare.netlify.app'+appPath;
+ const h=harness(),e=h.event(new Request(appUrl));h.handlers.fetch(e);
  assert.equal(await (await e.response()).text(),'fresh shell');await e.done();assert.equal(h.writes.length,1);
- const offline=harness({offline:true}),fallback=offline.event(new Request('https://tenderscope-healthcare.netlify.app/app.js'));offline.handlers.fetch(fallback);assert.equal(await (await fallback.response()).text(),'old shell');assert.equal(offline.writes.length,0);
+ const offline=harness({offline:true}),fallback=offline.event(new Request(appUrl));offline.handlers.fetch(fallback);assert.equal(await (await fallback.response()).text(),'old shell');assert.equal(offline.writes.length,0);
 });
 test('activation clears old TenderScope caches without removing other stored apps',async()=>{
  const h=harness(),e=h.event(null);h.handlers.activate(e);await e.done();assert.deepEqual(h.deleted,['tenderscope-app-v1','tenderscope-app-v2']);
