@@ -1,4 +1,15 @@
-# Current state — 27 November 2026, 00:10 IST
+# Current state — 27 November 2026, 21:54 IST
+
+## Website optimisation
+
+- **Live database change.** [PR #31](https://github.com/affvare-coder/Tenderscope/pull/31) merged at `b3909b8bdd054ee9abefd17e5fe8bc63179a51f6` and applied to Project A as migration `20261127161717`. The public feed evaluates each candidate's current buyer evidence once per eligibility search. Seven same-snapshot result comparisons matched. Combined RA and evaluation read 15,179 shared buffer blocks, down from 35,258. Home feed, medicine search, combined eligibility and closed-bid requests returned HTTP 200 through Netlify. End-to-end mobile performance remains to be measured.
+- **Built, awaiting founder approval.** [PR #29](https://github.com/affvare-coder/Tenderscope/pull/29) merged at `8354c6ce37c36eb978ee66566a85f8612b6e618c`. It defers 2,231,734 decoded bytes of document-tool JavaScript until requested and aborts replaced feed requests. The 128-test suite, CI, exact-SHA build and ZIP checks passed. ZIP SHA-256 `46d73f12505bdff3485b9f769167b768780f6be4d48d6536e07c88614dc85620`. Netlify still serves `600232ffd37617969d045f81d73edfccce83fe33`. The cloud preview could not load the local release. After exact-SHA approval, publish through the existing production workflow and check the served SHA and user paths.
+
+## Project B result handoff
+
+- **Hosted canary verified.** [PR #30](https://github.com/affvare-coder/Tenderscope/pull/30) merged at `072925354eeb29d5b02f50494946b5de58c66a22` and applied to A as migration `20261127161723`. Private service-only receipts bind results to the current tender revision, manifest, CSV hash and lease generation. Application and receipt commit in one transaction. Local acceptance covered stale evidence, hash mismatch, rollback, replay and member access.
+- Hosted B fetched and parsed the official CSV for GEM/2026/B/8313977. A rejected the obsolete ticket, accepted the current seven-row result with canonical write status `UNCHANGED` and acknowledged the replay as `already_accepted`. B retained the digest and cleared the delivered payload. This was an operator-driven canary. Automatic dispatch and result transport, bounded hosted throughput and broader whole-bid certification remain pending. Preserve PR #22's acceptance gates and the existing A scheduler.
+- A `agdmlgbfxoqhztiormij` remains the canonical publisher and authentication authority with sync worker v37. At 21:54 IST A held **473,173,139 database bytes**, leaving **11,826,861 bytes** before its unchanged 485,000,000-byte guard. Six saved bids remained present at the post-change check. B `xwxexchtbviiyxcmuvnn` held **11,340,947 database bytes**. The largest A relations were `sync_candidates` at 110,149,632 bytes and `sync_jobs` at 78,217,216 bytes. Keep dependent archive copies until their references are resolved.
 
 ## Project B reuse verified
 
@@ -6,13 +17,11 @@
 - The earlier trial project `noeobaiuzhywneddekpn` is paused as a rollback option. A `agdmlgbfxoqhztiormij` and the restored B `xwxexchtbviiyxcmuvnn` were the two healthy active projects.
 - Restored B uses BOQ runner v1 digest `7dc1a26865c29c81081b9572a8e5953bdc788dfc3c021e4ac83b790c6f51b6db`, with its invocation token and runner URL bound locally. B applied migrations `20261126183707`, `20261126183709` and `20261126183717`. The binding change merged in [PR #28](https://github.com/affvare-coder/Tenderscope/pull/28) at `0d61a042d879d5b460d57dc281e6affb057e6d11`. CI and local binding tests passed.
 - B used **11,259,027 database bytes** with zero customer accounts and Storage objects. Three authenticated hosted runs matched A's source hash, revision and all 61 CSV rows for GEM/2026/B/8308373, 8313971 and 8315522. Anonymous and member roles lack engine queue and result access.
-- A remains the canonical production writer and authentication authority. A measured **466,119,827 database bytes**, leaving **18,880,173 bytes** before the 485,000,000-byte guard. All six saved bids were present. The live feed returned HTTP 200 and 1,165 visible bids. Netlify serves `600232ffd37617969d045f81d73edfccce83fe33`. A's canonical sync worker is v37.
 
 ## Capacity controls and next gate
 
 - Scheduled retirement and the stale GeM confirmation repair are live. Seven expired bids were retired in the 26 November verification window. The scan found 388 older unsaved bids needing current evidence checks. A guard protects saved bids and current tender evidence.
 - Authenticated maintenance removed 142 detached candidate archive objects, totaling 1,595,521 file bytes. Their absence and receipts were verified. Nightly detached-file cleanup runs at 00:47 IST. A's capacity migrations were `20261126134443`, `20261126134446`, `20261126160321`, `20261126160347`, `20261126160501`, `20261126161450` and `20261126161451`. Maintenance v3 digest is `88a7d58b62261a661b3ee75a3f2fceb9fa3d58945d08c1b7141657ae52a29b28`.
-- **Pending** — implement A's authenticated dispatch and transactional result acceptance against the restored B reference. Verify stale-revision rejection and a bounded hosted publication canary before shifting production work. Retain PR #22's whole-bid certification and hosted throughput gates. Track A's allocated bytes after the scheduled cleanup and vacuum cycles. Archive copies in A with active references require dependency resolution before deletion.
 - Prior archive export SHA-256 values are `d35261623371c74e001858b97b0cd31396e8207b809bb06888e4850ab776b484` for the database and `8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85` for Storage. The 240 provider migration rows restored locally with matching checksums.
 
 ---
