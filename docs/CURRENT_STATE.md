@@ -1,4 +1,11 @@
-# Current state — 28 November 2026, 00:01 IST release
+# Current state — 28 November 2026, 00:45 IST
+
+## Scheduled Project B first-fetch pilot
+
+- [PR #32](https://github.com/affvare-coder/Tenderscope/pull/32) merged at `4a2af1745b8a5788ac249e45dac95ff19d213f85`. [CI](https://github.com/affvare-coder/Tenderscope/actions/runs/46054583013) passed. A applied migration `20261127190934` and B applied `20261127190919`. B's `tenderscope-boq-first-fetch` v1 bundle digest is `54c3ddad6ec42070853fddfb36d397ad2e543ee1cc2b2e06742127c0bbd8cedd`. The existing B runner remains available. Both projects hold a dedicated Vault key for fresh signed envelopes. B rejected an invalid signature with HTTP 401. No A service credential is passed to B.
+- Of 141 open CSVs already pinned by hash, all had current product rows. The useful lane held 72 open official CSV links awaiting first retrieval. The finite pilot enrolled three new bids with a source-linked parent and no recorded current amendment. Disposable PostgreSQL tests covered the existing receipt flows, signed envelopes, changed manifests, atomic rollback, fenced claims and acknowledgement replay.
+- Project B fetched and extracted GEM/2026/B/8315047 (10 rows), GEM/2026/B/8318230 (12 rows) and GEM/2026/B/8320609 (13 rows). A accepted all 35 rows, and the live Netlify `bid_pack_source` endpoint returned the same counts with HTTP 200 for all three. The endpoint reports zero certified rows for these bids. A's acceptance digest matched each delivered B receipt, and B cleared each staged payload. Cron job 19 stopped automatically with zero failed executions.
+- At 00:45 IST A held **47,41,39,795 database bytes**, leaving **1,08,60,205 bytes** before the 485,000,000-byte guard. Six saved bids were present and the daily, four-hour and queue-pump jobs were active. B held **1,13,90,099 database bytes**. A had 69 unverified open CSV links. The next gate is to reconcile official counts and applicable specification sources, verify the hosted broader review work from PR #22, and measure safe capacity before running periodic offload. Candidate and job relations on A still occupy 110.15 MB and 78.23 MB respectively.
 
 ## Website optimisation
 
@@ -8,7 +15,7 @@
 ## Project B result handoff
 
 - **Hosted canary verified.** [PR #30](https://github.com/affvare-coder/Tenderscope/pull/30) merged at `072925354eeb29d5b02f50494946b5de58c66a22` and applied to A as migration `20261127161723`. Private service-only receipts bind results to the current tender revision, manifest, CSV hash and lease generation. Application and receipt commit in one transaction. Local acceptance covered stale evidence, hash mismatch, rollback, replay and member access.
-- Hosted B fetched and parsed the official CSV for GEM/2026/B/8313977. A rejected the obsolete ticket, accepted the current seven-row result with canonical write status `UNCHANGED` and acknowledged the replay as `already_accepted`. B retained the digest and cleared the delivered payload. This was an operator-driven canary. Automatic dispatch and result transport, bounded hosted throughput and broader whole-bid certification remain pending. Preserve PR #22's acceptance gates and the existing A scheduler.
+- Hosted B fetched and parsed the official CSV for GEM/2026/B/8313977. A rejected the obsolete ticket, accepted the current seven-row result with canonical write status `UNCHANGED` and acknowledged the replay as `already_accepted`. B retained the digest and cleared the delivered payload. This was an operator-driven canary. The scheduled first-fetch pilot extends this handoff to new source retrieval. Preserve PR #22's whole-bid acceptance gates and the existing A scheduler.
 - A `agdmlgbfxoqhztiormij` remains the canonical publisher and authentication authority with sync worker v37. At 21:54 IST on 27 November A held **473,173,139 database bytes**, leaving **11,826,861 bytes** before its unchanged 485,000,000-byte guard. Six saved bids remained present at the post-change check. B `xwxexchtbviiyxcmuvnn` held **11,340,947 database bytes**. The largest A relations were `sync_candidates` at 110,149,632 bytes and `sync_jobs` at 78,217,216 bytes. Keep dependent archive copies until their references are resolved.
 
 ## Project B reuse verified
