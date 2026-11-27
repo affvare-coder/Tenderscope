@@ -166,18 +166,25 @@ function changeLabel(code) {
   const labels = { STATUS_CHANGED: 'Status changed', CLOSING_DATE_CHANGED: 'Closing date changed', OPENING_DATE_CHANGED: 'Opening date changed', BID_DOCUMENT_CHANGED: 'Bid document changed', ATC_CHANGED: 'ATC changed', BOQ_CHANGED: 'BOQ changed', SPECIFICATION_CHANGED: 'Specification changed', CORRIGENDUM: 'Corrigendum recorded', NEW_BID: 'New bid detected', BID_UPDATED: 'Bid updated', UPDATED: 'Bid updated', DEADLINE_EXTENDED: 'Deadline extended', EXTENDED: 'Deadline extended', DEADLINE_CHANGED: 'Deadline changed', DEADLINE_SHORTENED: 'Deadline brought forward', DOCUMENT_ADDED: 'Document added', DOCUMENT_CHANGED: 'Document changed', DOCUMENT_UPDATED: 'Document updated', DOCUMENT_REMOVED: 'Document removed', CLOSED_PENDING_VERIFICATION: 'Deadline passed · verify', CANCELLED: 'Bid cancelled', OPENED: 'Bid opened', EXPIRED: 'Expiry confirmed', REOPENED: 'Bid reopened' };
   return labels[String(code || '').toUpperCase()] || String(code || 'No recorded change').replace(/_/g, ' ').toLowerCase();
 }
-async function api(path) {
+async function api(path, signal) {
   const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const response = await fetch(API_URL + path, { cache: 'no-store', headers:H, signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed (HTTP ${response.status})`);
     return await response.json();
   } catch (error) {
+    if (signal?.aborted) throw error;
     if (controller.signal.aborted) throw new Error('The connection timed out');
     if (error instanceof TypeError) throw new Error('The data service could not be reached');
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
+  }
 }
 async function pages(path, size = 500) {
   const rows = [];
@@ -239,8 +246,12 @@ function saveRegister(data) {
   try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({savedAt:S.lastLoadedAt, key:S.pageKey, data})); }
   catch { /* Browsing remains available when storage is disabled. */ }
 }
+let feedController;
 async function load({ quiet = false } = {}) {
   const params = feedParams(), key = params.toString(), request = ++S.requestId;
+  feedController?.abort();
+  const controller = new AbortController();
+  feedController = controller;
   const currentOnly = verifiedSearch(params) || S.view === 'watch';
   S.loading = true;
   $('refreshBtn').disabled = true;
@@ -248,7 +259,7 @@ async function load({ quiet = false } = {}) {
   $('loadingState').hidden = quiet && S.loaded;
   render();
   try {
-    const data = await api('/rpc/public_tender_feed?' + key);
+    const data = await api('/rpc/public_tender_feed?' + key, controller.signal);
     if (request !== S.requestId) return;
     // A shrinking register can remove the last page between requests.
     if (!data.rows?.length && data.total > 0 && S.pageOffset >= data.total) {
@@ -271,6 +282,7 @@ async function load({ quiet = false } = {}) {
     if (!S.loaded) { kpis(); render(); }
   } finally {
     if (request === S.requestId) {
+      feedController = null;
       $('loadingState').hidden = true; $('refreshBtn').disabled = false; S.loading = false; render();
     }
   }
@@ -634,29 +646,66 @@ function previousPackWarning(key,current) {
 function rememberPack(key,source) {
   try {localStorage.setItem(key,JSON.stringify({version:source.version,deadline:source.deadline,document_versions:source.document_versions}));}catch{/* Storage may be disabled in a guest browser. */}
 }
+let studioLoad;
+function loadDocumentStudio() {
+  if (window.TenderScopeDocs) return Promise.resolve(window.TenderScopeDocs);
+  if (!studioLoad) {
+    studioLoad = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/document-studio.js';
+      const fail = () => {
+        clearTimeout(timeout);
+        script.remove();
+        reject(Error('Document tools could not load. Please retry.'));
+      };
+      const timeout = setTimeout(fail, 20000);
+      script.onerror = fail;
+      script.onload = () => {
+        if (!window.TenderScopeDocs) return fail();
+        clearTimeout(timeout);
+        resolve(window.TenderScopeDocs);
+      };
+      document.head.append(script);
+    }).catch(error => {
+      studioLoad = null;
+      throw error;
+    });
+  }
+  return studioLoad;
+}
+let studioRequest = 0;
 async function openDocumentStudio(id,tab) {
  if(!byId(id))return;
+ const request = ++studioRequest, detailRequest = S.detailRequest;
+ const owner = AUTH.session?.user?.id;
+ const current = () => request === studioRequest && detailRequest === S.detailRequest &&
+  S.selected?.id === id && owner === AUTH.session?.user?.id && $('bidDialog').open;
+ $('detailFeedback').textContent = 'Opening document tools…';
  try {
-  if(!window.TenderScopeDocs)throw Error('Document tools are still loading. Retry shortly.');
-  const owner=AUTH.session?.user?.id;
-  const source=await currentPackSource(id);
-  if (S.selected?.id!==id || owner!==AUTH.session?.user?.id || !$('bidDialog').open) return;
+  const [studio, source] = await Promise.all([loadDocumentStudio(), currentPackSource(id)]);
+  if (!current()) return;
+  $('detailFeedback').textContent = '';
   const {bid,documents,items}=source;
   const orderedItems=items.sort((a,b)=>String(a.item_key||'').localeCompare(String(b.item_key||''),'en',{numeric:true}));
   const key=packHistoryKey(bid.bid_number,owner);
-  await window.TenderScopeDocs.open({bid,tab,documents,sourceItems:orderedItems,expectedCountEvidence:source.expected,
+  await studio.open({bid,tab,documents,sourceItems:orderedItems,expectedCountEvidence:source.expected,
     sourceVersion:source.version,previousPackWarning:previousPackWarning(key,source),
     checkExportSource:async()=>{
       const latest=await currentPackSource(id,true);
       if(latest.version!==source.version)throw Error('The bid or buyer documents changed. Reopen the bid and review the current requirements before exporting.');
     },
     rememberExport:()=>rememberPack(key,source),
-    analyze:()=>askBid(id),items:window.TenderScopeDocs.verifiedItems(orderedItems,documents),client:authClient,userId:owner,download:async documentId=>{
+    analyze:()=>askBid(id),items:studio.verifiedItems(orderedItems,documents),client:authClient,userId:owner,download:async documentId=>{
    const token=await sessionToken();if(!token)throw Error('Log in to load the official ATC, or upload its PDF.');
    const r=await fetch(`${PROJECT_URL}/functions/v1/tenderscope-download`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({document_id:documentId}),signal:AbortSignal.timeout(45000)});
    if(!r.ok){const e=await r.json().catch(()=>({}));throw Error(e.error||'Official ATC download failed.');}return new Uint8Array(await r.arrayBuffer());
   }});
- } catch(e){toast(e.message||'Document studio could not open.');}
+ } catch(e){
+  if (current()) {
+    $('detailFeedback').textContent = '';
+    toast(e.message || 'Document studio could not open.');
+  }
+ }
 }
 async function openFromLocation() {
   const hash = new URLSearchParams(location.hash.replace(/^#/, ''));

@@ -7,7 +7,7 @@ function setup(saved=null){
  const nodes=new Map();
  const get=id=>{if(['screenRefresh','headerStatus','exportBtn','syncStatus'].includes(id))return null;if(!nodes.has(id))nodes.set(id,{hidden:false,disabled:false,textContent:'',innerHTML:'',value:'',open:false,scrollIntoView(){}});return nodes.get(id);};
  const storage=new Map(saved ? [['tenderscope.public-page.v3',JSON.stringify(saved)]] : []);
- const ctx=vm.createContext({Intl,URL,URLSearchParams,Date,Map,console,setTimeout,clearTimeout,localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},document:{getElementById:get,querySelectorAll:()=>[]}});
+ const ctx=vm.createContext({Intl,URL,URLSearchParams,Date,Map,AbortController,console,setTimeout,clearTimeout,localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},document:{getElementById:get,querySelectorAll:()=>[]}});
  vm.runInContext(source.slice(0,source.indexOf('function sourceLink('))+source.slice(source.indexOf('function render()'),source.indexOf('async function docs('))+`
  card=t=>t.bid_number;loadProductSummaries=()=>{};loadBuyerReviews=()=>{};openFromLocation=async()=>{};
  this.run=load;this.state=S;this.restore=restoreRegister;this.counts=kpis;this.render=render;this.page=turnPage;this.key=()=>feedParams().toString();
