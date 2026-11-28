@@ -163,4 +163,78 @@ begin
   end;
 end;
 $tests$;
+
+-- More than one ordinary slot remains available while a mature day-2 check
+-- joins an existing stale-confirmation renewal.
+truncate pg_temp.tenders, pg_temp.member_saved_bids, pg_temp.expiry_checks;
+
+insert into pg_temp.tenders(id, bid_number, deadline, source, status, lifecycle_state)
+select gen_random_uuid(), bid, now() - age, 'GeM', 'expired', lifecycle
+from (values
+  ('ordinary-head', interval '26 hours', 'EXPIRED'),
+  ('ordinary-two', interval '27 hours', 'EXPIRED'),
+  ('ordinary-three', interval '28 hours', 'EXPIRED'),
+  ('ordinary-four', interval '29 hours', 'EXPIRED'),
+  ('saved-completion', interval '4 days', 'EXPIRED'),
+  ('cancelled-completion', interval '5 days', 'CANCELLED'),
+  ('failed-in-cooldown', interval '5 days 1 hour', 'EXPIRED'),
+  ('day2-extension', interval '5 days 2 hours', 'EXPIRED'),
+  ('mature-followup', interval '6 days', 'EXPIRED'),
+  ('older-followup', interval '7 days', 'EXPIRED'),
+  ('stale-renewal', interval '8 days', 'EXPIRED')
+) as cases(bid, age, lifecycle);
+
+insert into pg_temp.member_saved_bids
+select null, bid_number from pg_temp.tenders where bid_number = 'saved-completion';
+insert into pg_temp.expiry_checks(tender_id, deadline, check_day, checked_at, observed_deadline, source_url, outcome)
+select id, deadline, 1, now() - interval '2 days', deadline,
+  'https://bidplus.gem.gov.in/all-bids', 'unchanged'
+from pg_temp.tenders where bid_number not like 'ordinary-%';
+insert into pg_temp.expiry_checks(tender_id, deadline, check_day, checked_at, observed_deadline, source_url, outcome)
+select id, deadline, 2,
+  now() - case bid_number when 'failed-in-cooldown' then interval '2 hours' else interval '48 hours' end,
+  case bid_number when 'stale-renewal' then deadline when 'day2-extension' then deadline + interval '1 day' end,
+  'https://bidplus.gem.gov.in/all-bids',
+  case bid_number when 'stale-renewal' then 'unchanged' when 'day2-extension' then 'extended' else 'failed' end
+from pg_temp.tenders where bid_number in ('stale-renewal', 'day2-extension', 'failed-in-cooldown');
+
+do $completion_tests$
+declare
+  actual text[];
+  target pg_temp.tenders%rowtype;
+begin
+  select array_agg(x->>'bid_number' order by ord)
+  into actual from jsonb_array_elements(pg_temp.expiry_checks_due(3)) with ordinality as j(x, ord);
+  if actual is distinct from array['ordinary-head', 'stale-renewal', 'ordinary-two'] then
+    raise exception 'Small expiry batches must preserve normal priority, got %', actual;
+  end if;
+
+  select array_agg((x->>'bid_number') || ':' || (x->>'check_day') order by ord)
+  into actual from jsonb_array_elements(pg_temp.expiry_checks_due(5)) with ordinality as j(x, ord);
+  if actual is distinct from array['ordinary-head:1', 'stale-renewal:2', 'mature-followup:2',
+      'ordinary-two:1', 'ordinary-three:1'] then
+    raise exception 'Expected an unsaved day-2 completion, one renewal and three ordinary checks, got %', actual;
+  end if;
+
+  select * into strict target from pg_temp.tenders where bid_number='mature-followup';
+  if pg_temp.retirement_eligible(target.id) then
+    raise exception 'Scheduling the missing proof must not authorize retirement';
+  end if;
+
+  perform pg_temp.record_expiry_check(target.id, target.deadline, 2, null, null, 'missing');
+  if pg_temp.retirement_eligible(target.id) then
+    raise exception 'Missing official response must not authorize retirement';
+  end if;
+  if pg_temp.expiry_checks_due(5)->2->>'bid_number' is distinct from 'older-followup' then
+    raise exception 'A missing response on cooldown must not block the next day-2 follow-up';
+  end if;
+
+  select * into strict target from pg_temp.tenders where bid_number='older-followup';
+  perform pg_temp.record_expiry_check(target.id, target.deadline, 2, target.deadline,
+    'https://bidplus.gem.gov.in/all-bids', 'unchanged');
+  if not pg_temp.retirement_eligible(target.id) then
+    raise exception 'The original retirement gate should accept fresh, matching official evidence';
+  end if;
+end;
+$completion_tests$;
 rollback;
