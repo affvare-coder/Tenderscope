@@ -1,4 +1,14 @@
-# Current state — 28 November 2026, 00:45 IST
+# Current state — 28 November 2026, 17:14 IST
+
+## Critical priorities verified
+
+- [PR #33](https://github.com/affvare-coder/Tenderscope/pull/33) stopped rewriting 12 unchanged partial runs. A migration `20261128023805` is live. The test and a live reconcile preserved all 12 completion times and record identities.
+- [PR #34](https://github.com/affvare-coder/Tenderscope/pull/34) reserves one due day-2 expiry proof in sufficiently large batches. A migration `20261128113822` is live. A normal five-check selection still returns five. The saved-bid, current deadline, stale confirmation and archive gates apply. All 65 audited recent retirements had matching private verified archive receipts and file sizes. The current approved expiry mechanism handles subsequent retirements.
+- [PR #35](https://github.com/affvare-coder/Tenderscope/pull/35) reserves a due publication recovery on an existing source turn at most once per four hours. A migration `20261128114001` is live. Exact-function fixtures passed three times with daily starts, cadence, expiry and document turns retained. At the post-deploy snapshot the next qualifying paced turn was still pending. Four previously identified unpublished healthcare candidates have queued official parent jobs.
+- [PR #36](https://github.com/affvare-coder/Tenderscope/pull/36) moved `tender_items` and `sync_document_facts` to earlier page reuse, A migration `20261128114039`. Hosted autovacuum ran on both. Dead tuple estimates changed from 2,604 and 1,070 to 0 and 1. A held **478,186,643 bytes**, leaving **6,813,357 bytes** before the existing ingestion guard and **1,813,357 bytes** before the B first-fetch intake guard. All 6 saved bids and the three principal discovery schedules were present. B held **11,439,251 bytes**. Estimated physical index reclaim requires a restorable A backup, physical disk and WAL preflight, and an approved window.
+- Independently re-fetched official CSVs and recorded hash-pinned expected counts **10 / 12 / 13** for GEM/2026/B/8315047, 8318230 and 8320609. Exact row data matched all 35. All six specification/ATC jobs already exist. Their full readable artifacts and safe separate-ATC certification support are pending. There are 2 rows in the current verified BOQ view. The new pilot count records did not certify the three bids.
+- [Gemini](https://gemini.google.com/app/e4cbd65e27ed84a2?pli=1) could not independently open GeM documents and recommended rejecting incomplete downloads before hashing. [PR #37](https://github.com/affvare-coder/Tenderscope/pull/37) passed 11 focused tests. Project B first-fetch v2 is live at digest `871a82d737696de4539e3c76f8aa38bc45ed222d430fd76e3e3389ed7ad9d2b7` and returned HTTP 200 on a signed acknowledgement replay. A's identical module overlay is ready pending recovery of its exact production worker bundle.
+- Recurring B offload remains disabled. The prior proposal breaks normal A wakes with an ambiguous column until qualified, and its live blanket gate allows no start. A lease handoff needs a fence covering dequeued HTTP starts. The one-shot pilot remains verified. Protect the shared daily budget and certify against complete current official files before wider scaling.
 
 ## Scheduled Project B first-fetch pilot
 
@@ -30,55 +40,3 @@
 - Scheduled retirement and the stale GeM confirmation repair are live. Seven expired bids were retired in the 26 November verification window. The scan found 388 older unsaved bids needing current evidence checks. A guard protects saved bids and current tender evidence.
 - Authenticated maintenance removed 142 detached candidate archive objects, totaling 1,595,521 file bytes. Their absence and receipts were verified. Nightly detached-file cleanup runs at 00:47 IST. A's capacity migrations were `20261126134443`, `20261126134446`, `20261126160321`, `20261126160347`, `20261126160501`, `20261126161450` and `20261126161451`. Maintenance v3 digest is `88a7d58b62261a661b3ee75a3f2fceb9fa3d58945d08c1b7141657ae52a29b28`.
 - Prior archive export SHA-256 values are `d35261623371c74e001858b97b0cd31396e8207b809bb06888e4850ab776b484` for the database and `8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85` for Storage. The 240 provider migration rows restored locally with matching checksums.
-
----
-
-# Current state — 18 November 2026, 22:02 IST
-
-Phase 1 remains incomplete. Canonical consolidation and exact next gates: [autonomous execution plan](AUTONOMOUS_EXECUTION_PLAN_2026_11_18.md).
-
-- Main: dbbbadaeb9de90c861e39e6a8dfbb0bc31be0c2d; PR #11 merged at 07:19:50 IST. Netlify still publishes November 10 deploy 6af276da5b343c9c34b7da61. Merge is not deployment.
-- Database: 394,349,715 bytes. 569 open published bids, 127 with current product rows. These are not completeness counts.
-- About 10,250 queued document jobs. Existing hourly heads, four-hour rotating reconciliation, daily audit and bounded worker are active; full coverage is not proven. Health is degraded; two recent reconcile_sync_runs deadlocks need concurrent verification.
-- Daily 00:20 IST history pruning is active. Saved-bid safety and stale expiry proofs still block the complete expired-bid purge.
-- PR #13 remains Draft: official expected item count and complete specifications are not proven for the three real-bid controls.
-- No Make, paid model bridge, duplicate site or recurring LLM scheduler. Existing infrastructure continues while ChatGPT is closed.
-- Gemini's recorded reviews are incorporated; new review of this consolidation is requested, not claimed complete.
-
-The prior state below is retained as history and must not override this dated baseline.
-
----
-
-# Current state — 1 November 2026
-
-Production is https://tenderscope-healthcare.netlify.app/. Netlify published deploy `6af276da5b343c9c34b7da61` on 10 November 2026 at 07:14 IST. All 64 frontend tests and static ZIP validation passed before publication. Production checks confirmed bid cards and the sync health endpoint, plus the Ask AI snapshot, item-wise compliance editor and buyer ATC/annexure workflow on GEM/2026/B/8218595. Member-account document export and two-account isolation remain to be checked in production. Scanned annexures still require manual mapping and review.
-
-The live health snapshot showed verified product rows on 94 of 559 open published bids and 9,345 pending document jobs. The release surfaces those gaps. The 1 November records below describe earlier states.
-
-## Live repairs
-
-The 485,000,000-byte guard paused ingestion at 486,788,243 bytes. VACUUM FULL ANALYZE of public.sync_candidates recovered about 23 MB without removing records. The ordinary bounded queue resumed; quota and budget limits were retained. Latest observed database size was about 465 MB; headroom is limited and this is not a permanent capacity solution. Five publications within the last 24 hours were recovered by 11:52 IST, including GEM/2026/B/8208535. Coverage is still incomplete; the document queue is approximately 9,157 jobs. Thirty-eight existing open-bid BOQ jobs were prioritised without duplicating jobs or resetting budgets.
-
-The deployed worker update adds an explicit GeM Item Name/Quantity CSV variant and conservative positional PDF table parsing with source page keys. Current-hash verification remains mandatory. Scans, unsupported table layouts and wrapped ambiguous rows are not represented as verified product lists. The historical parser only extracted one CSV format; only four of 487 open stored bids initially had product rows. Later fixture or unit acceptance is not proof that all production PDFs have been parsed.
-
-## Prepared frontend
-
-Reuses the pending 24 October commercial frontend rather than discarding its account/draft safeguards. Ask AI opens bid intelligence and a document studio. Item-wise offers use verified source rows, editable OEM/product/pack, response and evidence. Responses start NEEDS REVIEW. Deterministic DOCX and PDF exports include participant letterhead/signature/stamp images. Profile text is private under per-account RLS; images, ATCs and draft offers remain in memory and clear on account change. Source document changes invalidate offers and mappings.
-
-ATC PDFs retain original page geometry/content; standard text fields receive conservative participant bindings. Flat PDFs use visual point-and-fill mapping and explicit annexure-page selection. A filled preview and review confirmation precede download. This is not autonomous exact reconstruction of every scanned ATC, and scanned annexures still require mapping. No LLM provider has been wired into TenderScope; source analysis still opens ChatGPT with official links. Automatic OEM choices, automatic Yes claims, a secure persisted image vault, multi-company team roles and ZIP packs remain open.
-
-## Verification
-
-124 backend tests and 43 frontend tests pass, including deterministic document exports, page preservation, stale-source exclusion, missing values, overflow, and PDF field flattening. Build and public ZIP validation pass. Preview UI was checked against the live public database: recovered new bid, missing-products state, studio tabs and a 93-row parsed BOQ. Full signed-in browser export and two-account user journeys have not yet been completed. Database RLS blocked cross-account update in a rolled-back acceptance check. No subscriber alert or WhatsApp message was sent.
-
-
-## Follow-up recovery — 1 November, 16:26 IST
-
-Live database had grown back to 483,986,579 bytes after ingestion resumed. Physical compaction of sync_candidates, sync_jobs, tender_versions and tender_events reduced it to 412,224,659 bytes. The verified post-maintenance snapshot retained 1,007 tenders, 5,567 versions, 7,507 events and 155,388 candidate rows. Source checks continued through 10:56 UTC. Eleven bids published within 24 hours were present in the preceding snapshot. Nightly compaction is now scheduled at 00:40 IST using pg_cron, before the existing 01:00 IST discovery run. No guard threshold, worker budget, WhatsApp delivery or source request limits were changed. This reclaims retention bloat; unbounded long-term candidate growth remains a capacity consideration.
-
-Netlify API still reports the 8 October frontend deployment. A fresh dashboard tab still shows Log in. Prior secure sign-in request timed out; its runtime was reset. Publication of the prepared document studio remains blocked by browser authentication, not by missing user authorisation. Frontend tests were repeated: 43 passed. The public package SHA-256 is e6dcc76a4d743c56b91db40bb1440375da86597fca9db25da746068e9052a3a3.
-
-
-## Open-bid BOQ fairness repair — 1 November
-
-Only five of 599 open stored bids had verified product rows at the continuation check. The queue now reserves its first document slot for a due open-bid CSV/BOQ lacking current-hash product rows. New publication heads, discovery/expiry turns, the reserved location slot and oldest-job recovery retain their existing ordering. No daily call counter, budget or quota was reset. A database claim test selected an actual queued BOQ under the reserved-slot state and rolled back its fixture. An initial attempt could not complete because the worker was busy; the retry passed. All 124 backend tests still pass. Full product/specification acceptance and Netlify publication remain incomplete.
