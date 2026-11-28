@@ -20,7 +20,7 @@ insert into pg_temp.sync_state(key,state) values ('queue_dispatch','{"discovery_
 insert into pg_temp.sync_runs(mode) values('hourly');
 insert into pg_temp.sync_jobs(run_id,mode,dedupe_key,payload)
 select r.id,'hourly',v.label,jsonb_build_object('kind','document','url','https://bidplus.gem.gov.in/showbidDocument/1','row',jsonb_build_object('bid_number',v.label,'published_at',now()-v.age,'closes_at',now()+v.to_close))
-from pg_temp.sync_runs r cross join (values ('fresh-1',interval '1 hour',interval '8 days'),('fresh-2',interval '2 hours',interval '9 days'),('urgent',interval '2 days',interval '1 day'),('backlog',interval '3 days',interval '7 days'),('expired',interval '8 days',interval '-4 days')) v(label,age,to_close);
+from pg_temp.sync_runs r cross join (values ('fresh-1',interval '1 hour',interval '8 days'),('fresh-2',interval '2 hours',interval '9 days'),('urgent',interval '2 days',interval '1 day'),('backlog',interval '73 hours',interval '7 days'),('expired',interval '8 days',interval '-4 days')) v(label,age,to_close);
 do $test$ declare chosen jsonb; item text; seq text[]:='{}'; begin
  if exists(select 1 from pg_temp.queued_document_lanes where closing<now()-interval '3 days') then raise exception 'expired candidate eligible'; end if;
  for i in 1..4 loop chosen:=pg_temp.claim_sync_job('fixture',30); item:=chosen->>'dedupe_key'; seq:=array_append(seq,item);
